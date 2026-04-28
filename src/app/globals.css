@@ -117,13 +117,17 @@ button {
 
 .title-option {
   position: absolute;
-  left: 34%;
-  right: 34%;
-  height: 8%;
+  left: 22%;
+  right: 12%;
+  height: 6%;
   border: 0;
   border-radius: 10px;
   background: transparent;
   color: transparent;
+}
+
+.title-option:hover {
+  background: rgba(255, 223, 93, 0.12);
 }
 
 .title-option:focus-visible {
@@ -133,15 +137,15 @@ button {
 }
 
 .title-option-a {
-  top: 48%;
+  top: 56.5%;
 }
 
 .title-option-b {
-  top: 58%;
+  top: 63.5%;
 }
 
 .title-option-c {
-  top: 68%;
+  top: 70.5%;
 }
 
 .grid {
