@@ -1,0 +1,15 @@
+---
+description: Gameplay implementation rules
+alwaysApply: true
+---
+
+# Gameplay rules
+
+- 10 targets per round.
+- 3 shots per volley.
+- Game A spawns 1 target per volley.
+- Game B spawns 2 targets per volley.
+- Game C spawns 2 clay targets per volley.
+- Hits trigger a micro-reveal during gameplay.
+- Review screen shows full tweets in shot order.
+- The playfield should stay uncluttered during active play.

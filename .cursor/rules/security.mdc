@@ -1,0 +1,13 @@
+---
+description: Security and destructive action rules
+alwaysApply: true
+---
+
+# Destructive action rules
+
+- Never delete on hit.
+- Never let Game C delete anything.
+- Never enable live deletion without OAuth, server-owned queues, queue hashing, review verification, rate-limit handling, and audit logging.
+- Keep tokens server-side only.
+- Do not log access tokens, refresh tokens, or full tweet text by default.
+- Live delete must be feature flagged and disabled by default.

@@ -1,0 +1,16 @@
+---
+description: Product rules for tweet-hunt
+alwaysApply: true
+---
+
+# tweet-hunt product rules
+
+- The app is called tweet-hunt.
+- Build a single-player retro arcade experience.
+- Game A uses one tweet bird at a time.
+- Game B uses two tweet birds at a time.
+- Game C uses clay tweets only and is non-destructive.
+- A hit bags a tweet for review. It does not immediately delete it.
+- A miss lets the tweet escape.
+- The full deletion decision happens after the round.
+- Do not turn the product into a dashboard.
