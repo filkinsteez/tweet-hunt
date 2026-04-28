@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import titleAsset from "../../Assets/Sprites/title.jpg";
 import { GameCanvas } from "./GameCanvas";
 import { HuntSetup } from "./HuntSetup";
 import { ModePicker } from "./ModePicker";
@@ -21,6 +22,11 @@ export function TweetHuntApp() {
 
   function setMode(mode: GameMode) {
     setConfig((current) => ({ ...current, mode }));
+  }
+
+  function selectTitleMode(mode: GameMode) {
+    setConfig((current) => ({ ...current, mode }));
+    setStage("setup");
   }
 
   function startRound() {
@@ -55,33 +61,20 @@ export function TweetHuntApp() {
 
         <div className="cabinet-body">
           {stage === "title" ? (
-            <div className="grid">
-              <section className="arcade-card">
-                <p className="kicker">Insert coin</p>
-                <h2>A retro arcade round for your old tweets</h2>
-                <p>
-                  Game A sends one tweet bird at a time. Game B sends two tweet birds at a time. Game C sends clay tweets and never touches live posts.
-                </p>
-                <p className="muted">
-                  A hit gives you a fast micro-reveal during play. At the end of the round, every hit tweet is shown in a review screen before any delete request can be sent.
-                </p>
-                <div className="button-row">
-                  <button className="primary" type="button" onClick={() => setStage("setup")}>Press start</button>
-                  <button className="secondary" type="button" onClick={() => { setConfig({ mode: "C", source: "random" }); setStage("play"); }}>Practice Game C</button>
-                </div>
-              </section>
-              <aside className="arcade-card">
-                <h3>Rules</h3>
-                <ul className="stat-list">
-                  <li><span>Round size</span><strong>10 targets</strong></li>
-                  <li><span>Shots</span><strong>3 per volley</strong></li>
-                  <li><span>Game A</span><strong>1 tweet</strong></li>
-                  <li><span>Game B</span><strong>2 tweets</strong></li>
-                  <li><span>Game C</span><strong>0 deletes</strong></li>
-                  <li><span>Delete timing</span><strong>after review</strong></li>
-                </ul>
-              </aside>
-            </div>
+            <section className="title-screen" aria-label="tweet-hunt title screen">
+              <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
+              <div className="title-options" aria-label="Choose a game mode">
+                <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
+                  Game A
+                </button>
+                <button className="title-option title-option-b" type="button" onClick={() => selectTitleMode("B")}>
+                  Game B
+                </button>
+                <button className="title-option title-option-c" type="button" onClick={() => selectTitleMode("C")}>
+                  Game C
+                </button>
+              </div>
+            </section>
           ) : null}
 
           {stage === "setup" ? (

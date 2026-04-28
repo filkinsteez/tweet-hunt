@@ -93,6 +93,57 @@ button {
   padding: 22px;
 }
 
+.title-screen {
+  position: relative;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  border: 4px solid var(--stroke);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+}
+
+.title-screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.title-options {
+  position: absolute;
+  inset: 0;
+}
+
+.title-option {
+  position: absolute;
+  left: 34%;
+  right: 34%;
+  height: 8%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: transparent;
+}
+
+.title-option:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  background: rgba(255, 223, 93, 0.16);
+}
+
+.title-option-a {
+  top: 48%;
+}
+
+.title-option-b {
+  top: 58%;
+}
+
+.title-option-c {
+  top: 68%;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.35fr 0.65fr;
