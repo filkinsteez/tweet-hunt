@@ -1,9 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import backgroundAsset from "../../Assets/Sprites/background.jpg";
+import foregroundAsset from "../../Assets/Sprites/foreground.png";
+import midgroundAsset from "../../Assets/Sprites/midground.png";
+import treeAsset from "../../Assets/Sprites/tree.png";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
+  DOG_HOLD_DURATION_MS,
+  DOG_LOWER_DURATION_MS,
+  DOG_POP_DELAY_MS,
+  DOG_RETRIEVE_PAUSE_MS,
+  DOG_RETRIEVE_TRIGGER_Y,
+  DOG_RISE_DURATION_MS,
+  HIT_REACTION_DURATION_MS,
+  ROUND_INTRO_DURATION_MS,
   RESOLVE_DELAY_MS,
   SHOTS_PER_VOLLEY,
   TARGETS_PER_ROUND,
@@ -13,11 +25,21 @@ import {
   scoreForRound,
   targetsPerVolley
 } from "@/game/constants";
-import { clearScene, drawCrosshair, drawDog, drawTarget } from "@/game/draw";
+import {
+  clearScene,
+  drawCrosshair,
+  drawDog,
+  drawForeground,
+  drawIntroDog,
+  drawMidground,
+  drawTarget,
+  drawTreeLayer,
+  isIntroDogBehindGrass
+} from "@/game/draw";
 import { formatDate, truncate } from "@/game/format";
 import type { BirdColor, GameMode, HitRecord, RoundResult, TargetEntity, TweetCandidate } from "@/game/types";
 
-type RuntimePhase = "boot" | "active" | "resolve" | "ended";
+type RuntimePhase = "boot" | "intro" | "active" | "resolve" | "ended";
 
 type RuntimeState = {
   mode: GameMode;
@@ -35,6 +57,8 @@ type RuntimeState = {
   hits: HitRecord[];
   escapes: RoundResult["escapes"];
   lastVolleyHitCount: number;
+  retrieveDogTriggeredAtMs?: number;
+  retrieveDogX?: number;
   ended: boolean;
 };
 
@@ -82,6 +106,8 @@ function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
     hits: [],
     escapes: [],
     lastVolleyHitCount: 0,
+    retrieveDogTriggeredAtMs: undefined,
+    retrieveDogX: undefined,
     ended: false
   };
 }
@@ -130,7 +156,11 @@ function spawnTarget(mode: GameMode, roundNumber: number, targetIndex: number, t
     createdAtMs: performance.now(),
     points: scoreForRound(roundNumber, targetIndex),
     direction,
-    flight
+    flight,
+    erraticPhase: Math.random() * Math.PI * 2,
+    erraticStrength: randomBetween(42, 78),
+    erraticRate: randomBetween(5.5, 8.5),
+    fliesBehindTree: Math.random() < 0.5
   };
 }
 
@@ -153,6 +183,8 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   state.volleyNumber += 1;
   state.shotsRemaining = SHOTS_PER_VOLLEY;
   state.lastVolleyHitCount = 0;
+  state.retrieveDogTriggeredAtMs = undefined;
+  state.retrieveDogX = undefined;
 }
 
 function markEscaped(state: RuntimeState, target: TargetEntity, now: number) {
@@ -188,6 +220,10 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
 export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const treeImageRef = useRef<HTMLImageElement | null>(null);
+  const midgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const foregroundImageRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef<RuntimeState | null>(null);
   const rafRef = useRef<number | null>(null);
   const mouseRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
@@ -224,10 +260,64 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
+    const backgroundImage = new Image();
+    backgroundImage.src = backgroundAsset.src;
+    backgroundImage.onload = () => {
+      backgroundImageRef.current = backgroundImage;
+    };
+
+    return () => {
+      backgroundImage.onload = null;
+      backgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const midgroundImage = new Image();
+    midgroundImage.src = midgroundAsset.src;
+    midgroundImage.onload = () => {
+      midgroundImageRef.current = midgroundImage;
+    };
+
+    return () => {
+      midgroundImage.onload = null;
+      midgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const treeImage = new Image();
+    treeImage.src = treeAsset.src;
+    treeImage.onload = () => {
+      treeImageRef.current = treeImage;
+    };
+
+    return () => {
+      treeImage.onload = null;
+      treeImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const foregroundImage = new Image();
+    foregroundImage.src = foregroundAsset.src;
+    foregroundImage.onload = () => {
+      foregroundImageRef.current = foregroundImage;
+    };
+
+    return () => {
+      foregroundImage.onload = null;
+      foregroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!assetReady) return undefined;
+    const now = performance.now();
     const state = createInitialState(mode, roundNumber);
+    state.phase = "intro";
+    state.phaseStartedAtMs = now;
     stateRef.current = state;
-    startNextVolley(state, tweetsRef.current, performance.now());
 
     return () => {
       stateRef.current = null;
@@ -239,13 +329,32 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     const image = imageRef.current;
     const state = stateRef.current;
     if (!canvas || !image || !state) return;
+    const introDogElapsedMs = timeMs - state.phaseStartedAtMs;
+    const introDogBehindGrass = state.phase === "intro" && isIntroDogBehindGrass(introDogElapsedMs);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    clearScene(ctx);
+    clearScene(ctx, backgroundImageRef.current);
 
     const dt = 1 / 60;
+    if (state.phase === "intro" && timeMs - state.phaseStartedAtMs >= ROUND_INTRO_DURATION_MS) {
+      startNextVolley(state, tweetsRef.current, timeMs);
+    }
+
+    if (state.phase === "active" || state.phase === "resolve") {
+      for (const target of state.targets) {
+        if (target.status === "hit") {
+          const hitAgeMs = timeMs - (target.hitAtMs ?? timeMs);
+          if (hitAgeMs >= HIT_REACTION_DURATION_MS) {
+            target.x += target.vx * dt;
+            target.y += target.vy * dt;
+            target.vy += 620 * dt;
+          }
+        }
+      }
+    }
+
     if (state.phase === "active") {
       for (const target of state.targets) {
         if (target.status === "flying") {
@@ -255,14 +364,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
           if (target.kind === "clay") {
             target.vy += 210 * dt;
           } else {
+            const elapsedSeconds = (timeMs - target.createdAtMs) / 1000;
+            const phase = target.erraticPhase ?? 0;
+            const strength = target.erraticStrength ?? 52;
+            const rate = target.erraticRate ?? 6.5;
+            const flutter = Math.sin(elapsedSeconds * rate + phase);
+            const dart = Math.sin(elapsedSeconds * (rate * 1.7) + phase * 0.5);
+
+            target.vy += (flutter * strength + dart * strength * 0.45) * dt;
+            target.vx += target.direction * dart * strength * 0.18 * dt;
             if (target.y < 82 || target.y > CANVAS_HEIGHT - 250) target.vy *= -1;
           }
         }
 
-        if (target.status === "hit") {
-          target.y += target.vy * dt;
-          target.vy += 520 * dt;
-        }
       }
 
       const volleyExpired = timeMs - state.volleyStartedAtMs > VOLLEY_DURATION_MS;
@@ -284,7 +398,52 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       }
     }
 
-    if (state.phase === "resolve" && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS) {
+    let resolveDogState: "laugh" | "one" | "two" | null = null;
+    if (state.phase === "resolve") {
+      resolveDogState = "laugh";
+      if (state.lastVolleyHitCount === 0) resolveDogState = "laugh";
+      else if (state.lastVolleyHitCount === 1) resolveDogState = "one";
+      else resolveDogState = "two";
+    }
+    const retrieveDogState = resolveDogState === "one" || resolveDogState === "two";
+    if (state.phase === "resolve" && retrieveDogState && state.retrieveDogTriggeredAtMs === undefined) {
+      const birdsBehindGrass = state.targets.filter((target) => target.kind === "bird" && target.status === "hit" && target.y >= DOG_RETRIEVE_TRIGGER_Y);
+      if (birdsBehindGrass.length > 0) {
+        state.retrieveDogTriggeredAtMs = timeMs;
+        const averageX = birdsBehindGrass.reduce((sum, target) => sum + target.x, 0) / birdsBehindGrass.length;
+        state.retrieveDogX = Math.min(Math.max(averageX, 90), CANVAS_WIDTH - 90);
+      }
+    }
+
+    const retrieveDogAgeMs = state.retrieveDogTriggeredAtMs === undefined ? 0 : timeMs - state.retrieveDogTriggeredAtMs;
+    const retrieveDogAnimationAgeMs = Math.max(retrieveDogAgeMs - DOG_RETRIEVE_PAUSE_MS, 0);
+    const retrieveDogSequenceMs = DOG_RETRIEVE_PAUSE_MS + DOG_RISE_DURATION_MS + DOG_HOLD_DURATION_MS + DOG_LOWER_DURATION_MS;
+    const shouldShowRetrieveDog =
+      retrieveDogState &&
+      state.retrieveDogTriggeredAtMs !== undefined &&
+      retrieveDogAgeMs >= DOG_RETRIEVE_PAUSE_MS &&
+      retrieveDogAgeMs < retrieveDogSequenceMs;
+    const shouldShowLaughDog =
+      resolveDogState === "laugh" && timeMs - state.phaseStartedAtMs >= DOG_POP_DELAY_MS;
+
+    let dogRiseOffset = 0;
+    if (shouldShowRetrieveDog) {
+      if (retrieveDogAnimationAgeMs < DOG_RISE_DURATION_MS) {
+        const progress = retrieveDogAnimationAgeMs / DOG_RISE_DURATION_MS;
+        const ease = 1 - (1 - progress) ** 2;
+        dogRiseOffset = (1 - ease) * 120;
+      } else if (retrieveDogAnimationAgeMs > DOG_RISE_DURATION_MS + DOG_HOLD_DURATION_MS) {
+        const progress = (retrieveDogAnimationAgeMs - DOG_RISE_DURATION_MS - DOG_HOLD_DURATION_MS) / DOG_LOWER_DURATION_MS;
+        dogRiseOffset = Math.min(progress, 1) ** 2 * 120;
+      }
+    }
+
+    const canAdvanceResolve =
+      state.phase === "resolve" &&
+      ((retrieveDogState && state.retrieveDogTriggeredAtMs !== undefined && retrieveDogAgeMs >= retrieveDogSequenceMs) ||
+        (!retrieveDogState && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS));
+
+    if (canAdvanceResolve) {
       if (state.targetsPresented >= TARGETS_PER_ROUND) {
         finishRound(state, onRoundEndRef.current);
       } else {
@@ -293,17 +452,29 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
 
     for (const target of state.targets) {
-      if (target.status !== "escaped") drawTarget(ctx, image, target, timeMs);
+      if (target.status !== "escaped" && target.fliesBehindTree) drawTarget(ctx, image, target, timeMs);
     }
 
-    let dogState: "walk" | "flush" | "laugh" | "one" | "two" = "flush";
-    if (state.phase === "resolve") {
-      if (state.lastVolleyHitCount === 0) dogState = "laugh";
-      else if (state.lastVolleyHitCount === 1) dogState = "one";
-      else dogState = "two";
+    drawTreeLayer(ctx, treeImageRef.current);
+
+    for (const target of state.targets) {
+      if (target.status !== "escaped" && !target.fliesBehindTree) drawTarget(ctx, image, target, timeMs);
     }
-    drawDog(ctx, image, timeMs, dogState);
-    drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
+
+    if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
+      drawDog(ctx, image, timeMs, resolveDogState, dogRiseOffset, shouldShowRetrieveDog ? state.retrieveDogX : undefined);
+    }
+    if (introDogBehindGrass) {
+      drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+    }
+
+    drawMidground(ctx, midgroundImageRef.current);
+    drawForeground(ctx, foregroundImageRef.current);
+
+    if (state.phase === "intro" && !introDogBehindGrass) {
+      drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+    }
+    if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
 
     if (timeMs - lastHudUpdateRef.current > 90) {
       lastHudUpdateRef.current = timeMs;
@@ -368,8 +539,8 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     const now = performance.now();
     hit.status = "hit";
     hit.hitAtMs = now;
-    hit.vx = 0;
-    hit.vy = 140;
+    hit.vx = hit.direction * 55;
+    hit.vy = 260;
     state.lastVolleyHitCount += 1;
     state.score += hit.points;
 

@@ -1,13 +1,59 @@
-import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE } from "./constants";
+import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE, HIT_REACTION_DURATION_MS } from "./constants";
 import { frameAt, spriteAtlas, type AnimationName, type FrameName } from "./atlas";
 import type { BirdColor, TargetEntity } from "./types";
 
-export function clearScene(ctx: CanvasRenderingContext2D) {
+const DOG_POSES = {
+  walk: { x: 96, y: CANVAS_HEIGHT - 255 },
+  flush: { x: 330, y: CANVAS_HEIGHT - 306 },
+  laugh: { x: 430, y: CANVAS_HEIGHT - 365 },
+  one: { x: 410, y: CANVAS_HEIGHT - 365 },
+  two: { x: 385, y: CANVAS_HEIGHT - 365 }
+};
+
+const INTRO_WALK_MS = 3600;
+const INTRO_FOUND_MS = 500;
+const INTRO_WALK_FPS = 11;
+const INTRO_JUMP_UP_FRAMES = 9;
+const INTRO_JUMP_FALL_FRAMES = 14;
+const INTRO_JUMP_FRAMES = INTRO_JUMP_UP_FRAMES + INTRO_JUMP_FALL_FRAMES;
+const INTRO_JUMP_MS = 920;
+const INTRO_JUMP_Y_OFFSETS = [
+  -45,
+  -82,
+  -112,
+  -134,
+  -148,
+  -156,
+  -159,
+  -160,
+  -160,
+  -159,
+  -157,
+  -153,
+  -147,
+  -139,
+  -128,
+  -114,
+  -97,
+  -78,
+  -58,
+  -37,
+  -16,
+  2,
+  18
+] satisfies number[];
+
+export function clearScene(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {
   ctx.imageSmoothingEnabled = false;
-  drawBackground(ctx);
+  drawBackground(ctx, backgroundImage);
 }
 
-export function drawBackground(ctx: CanvasRenderingContext2D) {
+export function drawBackground(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {
+  if (backgroundImage) {
+    ctx.drawImage(backgroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    return;
+  }
+
   ctx.fillStyle = "#63c8ff";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -25,6 +71,34 @@ export function drawBackground(ctx: CanvasRenderingContext2D) {
 
   ctx.fillStyle = "#145d29";
   ctx.fillRect(0, CANVAS_HEIGHT - 30, CANVAS_WIDTH, 30);
+}
+
+export function drawMidground(ctx: CanvasRenderingContext2D, midgroundImage?: HTMLImageElement | null) {
+  if (midgroundImage) {
+    ctx.drawImage(midgroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    return;
+  }
+
+  const grassTop = 425;
+
+  ctx.fillStyle = "#2bb44a";
+  ctx.fillRect(0, grassTop, CANVAS_WIDTH, CANVAS_HEIGHT - grassTop);
+  ctx.fillStyle = "#1f9239";
+  for (let x = 0; x < CANVAS_WIDTH; x += 22) {
+    ctx.fillRect(x, grassTop + ((x / 22) % 2) * 7, 12, CANVAS_HEIGHT - grassTop);
+  }
+}
+
+export function drawTreeLayer(ctx: CanvasRenderingContext2D, treeImage?: HTMLImageElement | null) {
+  if (!treeImage) return;
+
+  ctx.drawImage(treeImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+export function drawForeground(ctx: CanvasRenderingContext2D, foregroundImage?: HTMLImageElement | null) {
+  if (!foregroundImage) return;
+
+  ctx.drawImage(foregroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
 function drawCloud(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number) {
@@ -57,44 +131,95 @@ export function drawFrame(
   ctx.restore();
 }
 
-export function drawDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, timeMs: number, state: "walk" | "flush" | "laugh" | "one" | "two") {
+export function drawDog(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  timeMs: number,
+  state: "walk" | "flush" | "laugh" | "one" | "two",
+  yOffset = 0,
+  centerX?: number
+) {
   let animation: AnimationName = "dog_walk";
-  let x = 96;
-  let y = CANVAS_HEIGHT - 255;
+  let { x, y } = DOG_POSES.walk;
   let fps = 7;
 
   if (state === "flush") {
     animation = "dog_flush";
-    x = 330;
-    y = CANVAS_HEIGHT - 306;
+    ({ x, y } = DOG_POSES.flush);
     fps = 5;
   }
 
   if (state === "laugh") {
     animation = "dog_laugh";
-    x = 430;
-    y = CANVAS_HEIGHT - 232;
+    ({ x, y } = DOG_POSES.laugh);
     fps = 5;
   }
 
   if (state === "one") {
     animation = "dog_retrieve_one";
-    x = 410;
-    y = CANVAS_HEIGHT - 238;
+    ({ x, y } = DOG_POSES.one);
   }
 
   if (state === "two") {
     animation = "dog_retrieve_two";
-    x = 385;
-    y = CANVAS_HEIGHT - 238;
+    ({ x, y } = DOG_POSES.two);
   }
 
-  drawFrame(ctx, image, frameAt(animation, timeMs, fps), x, y, DOG_SCALE);
+  const frameName = frameAt(animation, timeMs, fps);
+  const [, , width] = spriteAtlas.frames[frameName];
+  const drawX = centerX === undefined ? x : centerX - (width * DOG_SCALE) / 2;
+
+  drawFrame(ctx, image, frameName, drawX, y + yOffset, DOG_SCALE);
+}
+
+export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, elapsedMs: number, timeMs: number) {
+  const groundY = CANVAS_HEIGHT - 255;
+  const centerDogX = CANVAS_WIDTH / 2 - (53 * DOG_SCALE) / 2;
+  const introStartX = 0;
+  const introEndX = centerDogX - 85;
+
+  if (elapsedMs < INTRO_WALK_MS) {
+    const progress = elapsedMs / INTRO_WALK_MS;
+    drawFrame(ctx, image, frameAt("dog_walk", timeMs, INTRO_WALK_FPS), introStartX + progress * (introEndX - introStartX), groundY, DOG_SCALE);
+    return;
+  }
+
+  if (elapsedMs < INTRO_WALK_MS + INTRO_FOUND_MS) {
+    drawFrame(ctx, image, "dog_found", introEndX, groundY - 16, DOG_SCALE);
+    return;
+  }
+
+  const jumpFrameIndex = introJumpFrameIndex(elapsedMs);
+  const jumpProgress = jumpFrameIndex / (INTRO_JUMP_FRAMES - 1);
+  const jumpX = introEndX + 48 + jumpProgress * 120;
+  const jumpY = groundY + INTRO_JUMP_Y_OFFSETS[jumpFrameIndex];
+  const jumpFrame = jumpFrameIndex < INTRO_JUMP_UP_FRAMES ? "dog_jump_01" : "dog_jump_02";
+  drawFrame(ctx, image, jumpFrame, jumpX, jumpY, DOG_SCALE);
+}
+
+export function isIntroDogBehindGrass(elapsedMs: number) {
+  if (elapsedMs < INTRO_WALK_MS + INTRO_FOUND_MS) return false;
+
+  return introJumpFrameIndex(elapsedMs) >= INTRO_JUMP_UP_FRAMES;
+}
+
+function introJumpFrameIndex(elapsedMs: number) {
+  const jumpElapsedMs = Math.max(elapsedMs - INTRO_WALK_MS - INTRO_FOUND_MS, 0);
+  const frameMs = INTRO_JUMP_MS / INTRO_JUMP_FRAMES;
+  return Math.min(Math.floor(jumpElapsedMs / frameMs), INTRO_JUMP_FRAMES - 1);
 }
 
 function birdAnimationName(color: BirdColor, flight: "side" | "diag" | "up", status: TargetEntity["status"]): AnimationName {
   if (status === "hit") return `bird_${color}_fall` as AnimationName;
   return `bird_${color}_${flight}` as AnimationName;
+}
+
+function birdFrameName(target: TargetEntity, timeMs: number): FrameName {
+  if (target.status === "hit" && timeMs - (target.hitAtMs ?? timeMs) < HIT_REACTION_DURATION_MS) {
+    return frameAt(`bird_${target.color}_hit` as AnimationName, timeMs, 12);
+  }
+
+  return frameAt(birdAnimationName(target.color, target.flight, target.status), timeMs, 12);
 }
 
 export function drawTarget(ctx: CanvasRenderingContext2D, image: HTMLImageElement, target: TargetEntity, timeMs: number) {
@@ -103,11 +228,7 @@ export function drawTarget(ctx: CanvasRenderingContext2D, image: HTMLImageElemen
     return;
   }
 
-  const animation = birdAnimationName(target.color, target.flight, target.status);
-  const frameName = target.status === "hit" && (timeMs - (target.hitAtMs ?? timeMs)) < 220
-    ? (`bird_${target.color}_hit_01` as FrameName)
-    : frameAt(animation, timeMs, 12);
-
+  const frameName = birdFrameName(target, timeMs);
   const [sx, sy, sw, sh] = spriteAtlas.frames[frameName];
   const drawX = target.x - (sw * BIRD_SCALE) / 2;
   const drawY = target.y - (sh * BIRD_SCALE) / 2;

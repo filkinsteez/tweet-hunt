@@ -48,6 +48,10 @@ export type TargetEntity = {
   points: number;
   direction: 1 | -1;
   flight: "side" | "diag" | "up";
+  erraticPhase?: number;
+  erraticStrength?: number;
+  erraticRate?: number;
+  fliesBehindTree?: boolean;
 };
 
 export type HitRecord = {
