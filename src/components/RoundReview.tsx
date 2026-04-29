@@ -7,11 +7,11 @@ import type { HitRecord, RoundResult } from "@/game/types";
 
 type Props = {
   result: RoundResult;
-  onBackToSetup: () => void;
+  onChangeGame: () => void;
   onNextRound: () => void;
 };
 
-export function RoundReview({ result, onBackToSetup, onNextRound }: Props) {
+export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
   const [sparedIds, setSparedIds] = useState<Set<string>>(new Set());
   const [deleteStatus, setDeleteStatus] = useState<"idle" | "deleting" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export function RoundReview({ result, onBackToSetup, onNextRound }: Props) {
 
         <div className="button-row" style={{ marginTop: 18 }}>
           <button className="primary" type="button" onClick={onNextRound}>Next round</button>
-          <button className="secondary" type="button" onClick={onBackToSetup}>Change hunt</button>
+          <button className="secondary" type="button" onClick={onChangeGame}>Change game</button>
         </div>
       </section>
 

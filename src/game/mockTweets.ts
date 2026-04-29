@@ -207,7 +207,8 @@ export function selectTweetCandidates(config: { source: string; year?: string; k
   let candidates = [...mockTweets];
 
   if (config.source === "year" && config.year) {
-    candidates = candidates.filter((tweet) => tweet.createdAt.startsWith(config.year));
+    const year = config.year;
+    candidates = candidates.filter((tweet) => tweet.createdAt.startsWith(year));
   }
 
   if (config.source === "keyword" && config.keyword?.trim()) {
@@ -233,6 +234,10 @@ export function selectTweetCandidates(config: { source: string; year?: string; k
       if (!seen.has(tweet.id)) candidates.push(tweet);
       if (candidates.length >= count) break;
     }
+  }
+
+  if (config.source === "random") {
+    candidates.sort(() => Math.random() - 0.5);
   }
 
   return candidates.slice(0, count);

@@ -5,6 +5,13 @@ import backgroundAsset from "../../Assets/Sprites/background.jpg";
 import foregroundAsset from "../../Assets/Sprites/foreground.png";
 import midgroundAsset from "../../Assets/Sprites/midground.png";
 import treeAsset from "../../Assets/Sprites/tree.png";
+import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
+import ducksHitAtlasAsset from "../../Assets/Sprites/UI/UI_ducks_hit_atlas.jpg";
+import roundAsset from "../../Assets/Sprites/UI/UI_round.jpg";
+import roundAtlasAsset from "../../Assets/Sprites/UI/UI_round_atlas.jpg";
+import scoreAsset from "../../Assets/Sprites/UI/UI_score.jpg";
+import scoreAtlasAsset from "../../Assets/Sprites/UI/UI_score_atlas.jpg";
+import shotsAsset from "../../Assets/Sprites/UI/UI_shots.jpg";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -62,16 +69,6 @@ type RuntimeState = {
   ended: boolean;
 };
 
-type HudState = {
-  score: number;
-  shotsRemaining: number;
-  hits: number;
-  escaped: number;
-  targetsPresented: number;
-  volleyNumber: number;
-  phase: RuntimePhase;
-};
-
 type MicroReveal = {
   id: string;
   text: string;
@@ -88,6 +85,16 @@ type Props = {
 };
 
 const COLORS: BirdColor[] = ["blue", "green", "red"];
+const UI_SCALE = 4;
+
+type UiImageKey = "shots" | "hit" | "hitAtlas" | "round" | "roundAtlas" | "score" | "scoreAtlas";
+
+const HUD_LAYOUT = {
+  round: { x: 92, y: CANVAS_HEIGHT - 152 },
+  shots: { x: 92, y: CANVAS_HEIGHT - 116 },
+  hit: { x: 252, y: CANVAS_HEIGHT - 112 },
+  score: { x: CANVAS_WIDTH - 232, y: CANVAS_HEIGHT - 112 }
+};
 
 function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
   return {
@@ -114,6 +121,96 @@ function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
+}
+
+function drawUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number) {
+  ctx.drawImage(image, x, y, image.naturalWidth * UI_SCALE, image.naturalHeight * UI_SCALE);
+}
+
+function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, digit: number, x: number, y: number) {
+  const glyphWidth = 8;
+  const glyphHeight = 8;
+  const sourceX = (digit % 5) * glyphWidth;
+  const sourceY = digit >= 5 ? glyphHeight : 0;
+  ctx.drawImage(atlas, sourceX, sourceY, glyphWidth, glyphHeight, x, y, glyphWidth * UI_SCALE, glyphHeight * UI_SCALE);
+}
+
+function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, score: number) {
+  const digits = Math.max(0, score).toString().padStart(6, "0").slice(-6);
+  const glyphWidth = 8 * UI_SCALE;
+  const x = HUD_LAYOUT.score.x + 4 * UI_SCALE;
+  const y = HUD_LAYOUT.score.y + UI_SCALE;
+
+  ctx.fillStyle = "#050508";
+  ctx.fillRect(x, y, glyphWidth * 6, 8 * UI_SCALE);
+  for (let index = 0; index < digits.length; index += 1) {
+    drawScoreDigit(ctx, atlas, Number(digits[index]), x + index * glyphWidth, y);
+  }
+}
+
+function drawRoundNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, roundNumber: number) {
+  const digits = Math.max(1, roundNumber).toString().slice(-2);
+  const glyphWidth = 8 * UI_SCALE;
+  const x = HUD_LAYOUT.round.x + 16 * UI_SCALE;
+  const y = HUD_LAYOUT.round.y;
+
+  ctx.fillStyle = "#050508";
+  ctx.fillRect(x, y, glyphWidth * 2, 8 * UI_SCALE);
+  for (let index = 0; index < digits.length; index += 1) {
+    drawScoreDigit(ctx, atlas, Number(digits[index]), x + index * glyphWidth, y);
+  }
+}
+
+function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hits: number) {
+  const duckWidth = 8;
+  const duckHeight = 8;
+  const y = HUD_LAYOUT.hit.y + 3 * UI_SCALE;
+
+  for (let index = 0; index < Math.min(hits, TARGETS_PER_ROUND); index += 1) {
+    ctx.drawImage(
+      atlas,
+      index * duckWidth,
+      0,
+      duckWidth,
+      duckHeight,
+      HUD_LAYOUT.hit.x + (36 + index * 8) * UI_SCALE,
+      y,
+      duckWidth * UI_SCALE,
+      duckHeight * UI_SCALE
+    );
+  }
+}
+
+function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number) {
+  ctx.fillStyle = "#050508";
+  for (let index = shotsRemaining; index < SHOTS_PER_VOLLEY; index += 1) {
+    ctx.fillRect(HUD_LAYOUT.shots.x + (6 + index * 8) * UI_SCALE, HUD_LAYOUT.shots.y + 3 * UI_SCALE, 5 * UI_SCALE, 9 * UI_SCALE);
+  }
+}
+
+function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, images: Partial<Record<UiImageKey, HTMLImageElement>>) {
+  const shots = images.shots;
+  const hit = images.hit;
+  const hitAtlas = images.hitAtlas;
+  const round = images.round;
+  const roundAtlas = images.roundAtlas;
+  const score = images.score;
+  const scoreAtlas = images.scoreAtlas;
+  if (!shots || !hit || !hitAtlas || !round || !roundAtlas || !score || !scoreAtlas) {
+    return;
+  }
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  drawUiImage(ctx, round, HUD_LAYOUT.round.x, HUD_LAYOUT.round.y);
+  drawUiImage(ctx, shots, HUD_LAYOUT.shots.x, HUD_LAYOUT.shots.y);
+  drawUiImage(ctx, hit, HUD_LAYOUT.hit.x, HUD_LAYOUT.hit.y);
+  drawUiImage(ctx, score, HUD_LAYOUT.score.x, HUD_LAYOUT.score.y);
+  drawRoundNumber(ctx, roundAtlas, state.roundNumber);
+  maskSpentShots(ctx, state.shotsRemaining);
+  drawHitDucks(ctx, hitAtlas, state.hits.length);
+  drawScoreNumber(ctx, scoreAtlas, state.score);
+  ctx.restore();
 }
 
 function spawnTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
@@ -220,6 +317,7 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
 export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -231,15 +329,6 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
   const [assetReady, setAssetReady] = useState(false);
-  const [hud, setHud] = useState<HudState>({
-    score: 0,
-    shotsRemaining: SHOTS_PER_VOLLEY,
-    hits: 0,
-    escaped: 0,
-    targetsPresented: 0,
-    volleyNumber: 0,
-    phase: "boot"
-  });
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
 
   useEffect(() => {
@@ -258,6 +347,32 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       setAssetReady(true);
     };
   }, []);
+
+  useEffect(() => {
+    const assets: Array<[UiImageKey, string]> = [
+      ["shots", shotsAsset.src],
+      ["hit", ducksHitAsset.src],
+      ["hitAtlas", ducksHitAtlasAsset.src],
+      ["round", roundAsset.src],
+      ["roundAtlas", roundAtlasAsset.src],
+      ["score", scoreAsset.src],
+      ["scoreAtlas", scoreAtlasAsset.src]
+    ];
+    const images = assets.map(([key, src]) => {
+      const image = new Image();
+      image.src = src;
+      image.onload = () => {
+        uiImagesRef.current[key] = image;
+      };
+      return image;
+    });
+
+    return () => {
+      for (const image of images) image.onload = null;
+      uiImagesRef.current = {};
+    };
+  }, []);
+
 
   useEffect(() => {
     const backgroundImage = new Image();
@@ -475,18 +590,10 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
     }
     if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
+    drawSpriteHud(ctx, state, uiImagesRef.current);
 
     if (timeMs - lastHudUpdateRef.current > 90) {
       lastHudUpdateRef.current = timeMs;
-      setHud({
-        score: state.score,
-        shotsRemaining: state.shotsRemaining,
-        hits: state.hits.length,
-        escaped: state.escapes.length,
-        targetsPresented: state.targetsPresented,
-        volleyNumber: state.volleyNumber,
-        phase: state.phase
-      });
       setMicroReveal((current) => (current && current.expiresAt < timeMs ? null : current));
     }
   }, []);
@@ -583,22 +690,15 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         onMouseMove={handleMouseMove}
         onClick={handleShot}
       />
-      <div className="hud-overlay" aria-hidden="true">
-        <div className="hud-row">
-          <span className="hud-pill">{modeLabel(mode)}</span>
-          <span className="hud-pill">Round {roundNumber}</span>
-          <span className="hud-pill">Score {hud.score}</span>
-          <span className="hud-pill">Shots {hud.shotsRemaining}</span>
-          <span className="hud-pill">Hit {hud.hits}/{TARGETS_PER_ROUND}</span>
-        </div>
-        {microReveal ? (
+      {microReveal ? (
+        <div className="hud-overlay" aria-hidden="true">
           <div className="micro-reveal">
             <strong>LAST HIT +{microReveal.points}</strong>
             <p>{microReveal.text}</p>
             <small>{microReveal.date}</small>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
