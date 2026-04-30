@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import backgroundAsset from "../../Assets/Sprites/background.jpg";
 import foregroundAsset from "../../Assets/Sprites/foreground.png";
+import flyFrameOneAsset from "../../Assets/Illustrator/Exports/fly_1.png";
+import flyFrameTwoAsset from "../../Assets/Illustrator/Exports/fly_2.png";
 import midgroundAsset from "../../Assets/Sprites/midground.png";
 import treeAsset from "../../Assets/Sprites/tree.png";
 import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
@@ -41,7 +43,8 @@ import {
   drawMidground,
   drawTarget,
   drawTreeLayer,
-  isIntroDogBehindGrass
+  isIntroDogBehindGrass,
+  type FlyFrameImages
 } from "@/game/draw";
 import { formatDate, truncate } from "@/game/format";
 import type { BirdColor, GameMode, HitRecord, RoundResult, TargetEntity, TweetCandidate } from "@/game/types";
@@ -317,6 +320,7 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
 export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const flyFramesRef = useRef<FlyFrameImages | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
@@ -345,6 +349,27 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     image.onload = () => {
       imageRef.current = image;
       setAssetReady(true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const frameOne = new Image();
+    const frameTwo = new Image();
+    let loadedCount = 0;
+    const handleLoad = () => {
+      loadedCount += 1;
+      if (loadedCount === 2) flyFramesRef.current = [frameOne, frameTwo];
+    };
+
+    frameOne.onload = handleLoad;
+    frameTwo.onload = handleLoad;
+    frameOne.src = flyFrameOneAsset.src;
+    frameTwo.src = flyFrameTwoAsset.src;
+
+    return () => {
+      frameOne.onload = null;
+      frameTwo.onload = null;
+      flyFramesRef.current = null;
     };
   }, []);
 
@@ -567,13 +592,13 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
 
     for (const target of state.targets) {
-      if (target.status !== "escaped" && target.fliesBehindTree) drawTarget(ctx, image, target, timeMs);
+      if (target.status !== "escaped" && target.fliesBehindTree) drawTarget(ctx, image, target, timeMs, flyFramesRef.current);
     }
 
     drawTreeLayer(ctx, treeImageRef.current);
 
     for (const target of state.targets) {
-      if (target.status !== "escaped" && !target.fliesBehindTree) drawTarget(ctx, image, target, timeMs);
+      if (target.status !== "escaped" && !target.fliesBehindTree) drawTarget(ctx, image, target, timeMs, flyFramesRef.current);
     }
 
     if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
