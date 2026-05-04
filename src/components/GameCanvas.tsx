@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
+import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
@@ -112,6 +113,13 @@ type RuntimeState = {
   lastPathId: number;
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
+  scoreReveals: Array<{
+    id: string;
+    x: number;
+    y: number;
+    points: number;
+    expiresAtMs: number;
+  }>;
   ended: boolean;
 };
 
@@ -142,10 +150,10 @@ const BIRD_FLIGHT_FLOOR_Y = FOREGROUND_GRASS_TOP_Y - 10;
 const MIN_BIRD_SCREEN_TIME_MS = 1800;
 
 const HUD_LAYOUT = {
-  round: { x: 35, y: CANVAS_HEIGHT - 137 },
-  shots: { x: 41, y: CANVAS_HEIGHT - 101 },
-  hit: { x: 198, y: CANVAS_HEIGHT - 97 },
-  score: { x: 707, y: CANVAS_HEIGHT - 97 }
+  round: { x: 35, y: CANVAS_HEIGHT - 132 },
+  shots: { x: 41, y: CANVAS_HEIGHT - 92 },
+  hit: { x: 198, y: CANVAS_HEIGHT - 92 },
+  score: { x: 707, y: CANVAS_HEIGHT - 92 }
 };
 
 function roundUiX(roundNumber: number) {
@@ -181,6 +189,7 @@ function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
     lastPathId: -1,
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
+    scoreReveals: [],
     ended: false
   };
 }
@@ -279,6 +288,24 @@ function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, image
   maskSpentShots(ctx, state.shotsRemaining);
   drawHitDucks(ctx, hitAtlas, state.hits.length);
   drawScoreNumber(ctx, scoreAtlas, state.score);
+  ctx.restore();
+}
+
+function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, timeMs: number) {
+  state.scoreReveals = state.scoreReveals.filter((reveal) => reveal.expiresAtMs > timeMs);
+  if (state.scoreReveals.length === 0) return;
+
+  ctx.save();
+  ctx.font = "16px 'Nintendo NES Font', 'Press Start 2P', monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff8d7";
+
+  for (const reveal of state.scoreReveals) {
+    const x = reveal.x;
+    const y = reveal.y - 16;
+    const text = `${reveal.points}`;
+    ctx.fillText(text, x, y);
+  }
   ctx.restore();
 }
 
@@ -471,6 +498,16 @@ function advanceFixedStep(state: RuntimeState, now: number) {
     if (target.mechanicsState === "hit_pause") {
       target.hitPauseTimer = Math.max((target.hitPauseTimer ?? 0) - 1, 0);
       if (target.hitPauseTimer === 0) {
+        state.score += target.points;
+        if (target.kind === "bird") {
+          state.scoreReveals.push({
+            id: `${target.id}_${now}`,
+            x: target.x,
+            y: target.y,
+            points: target.points,
+            expiresAtMs: now + 900
+          });
+        }
         target.mechanicsState = target.kind === "clay" ? "fragmenting" : "falling";
       }
       continue;
@@ -636,6 +673,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
+  const dogTwoBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
   const foregroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -727,6 +765,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       dogOneBirdImage.onload = null;
       dogOneBirdImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const dogTwoBirdImage = new Image();
+    dogTwoBirdImage.src = dogTwoBirdAsset.src;
+    dogTwoBirdImage.onload = () => {
+      dogTwoBirdImageRef.current = dogTwoBirdImage;
+    };
+
+    return () => {
+      dogTwoBirdImage.onload = null;
+      dogTwoBirdImageRef.current = null;
     };
   }, []);
 
@@ -829,13 +880,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     const retrieveDogAgeMs = state.retrieveDogTriggeredAtMs === undefined ? 0 : timeMs - state.retrieveDogTriggeredAtMs;
     const retrieveDogAnimationAgeMs = Math.max(retrieveDogAgeMs - DOG_RETRIEVE_PAUSE_MS, 0);
     const retrieveDogSequenceMs = DOG_RETRIEVE_PAUSE_MS + DOG_RISE_DURATION_MS + DOG_HOLD_DURATION_MS + DOG_LOWER_DURATION_MS;
+    const laughDogAgeMs = timeMs - state.phaseStartedAtMs - DOG_POP_DELAY_MS;
+    const laughDogSequenceMs = DOG_RISE_DURATION_MS + DOG_HOLD_DURATION_MS + DOG_LOWER_DURATION_MS;
     const shouldShowRetrieveDog =
       retrieveDogState &&
       state.retrieveDogTriggeredAtMs !== undefined &&
       retrieveDogAgeMs >= DOG_RETRIEVE_PAUSE_MS &&
       retrieveDogAgeMs < retrieveDogSequenceMs;
     const shouldShowLaughDog =
-      resolveDogState === "laugh" && timeMs - state.phaseStartedAtMs >= DOG_POP_DELAY_MS;
+      resolveDogState === "laugh" && laughDogAgeMs >= 0 && laughDogAgeMs < laughDogSequenceMs;
+    const dogReturnedBehindGrass =
+      retrieveDogState &&
+      state.retrieveDogTriggeredAtMs !== undefined &&
+      retrieveDogAgeMs >= retrieveDogSequenceMs;
 
     let dogRiseOffset = 0;
     if (shouldShowRetrieveDog) {
@@ -849,18 +906,22 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       }
     }
     if (shouldShowLaughDog) {
-      const laughDogAgeMs = timeMs - state.phaseStartedAtMs - DOG_POP_DELAY_MS;
       if (laughDogAgeMs < DOG_RISE_DURATION_MS) {
         const progress = laughDogAgeMs / DOG_RISE_DURATION_MS;
         const ease = 1 - (1 - progress) ** 2;
         dogRiseOffset = (1 - ease) * 120;
+      } else if (laughDogAgeMs > DOG_RISE_DURATION_MS + DOG_HOLD_DURATION_MS) {
+        const progress = (laughDogAgeMs - DOG_RISE_DURATION_MS - DOG_HOLD_DURATION_MS) / DOG_LOWER_DURATION_MS;
+        dogRiseOffset = Math.min(progress, 1) ** 2 * 120;
       }
     }
 
     const canAdvanceResolve =
       state.phase === "resolve" &&
       ((retrieveDogState && state.retrieveDogTriggeredAtMs !== undefined && retrieveDogAgeMs >= retrieveDogSequenceMs) ||
-        (!retrieveDogState && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS));
+        (!retrieveDogState &&
+          ((resolveDogState === "laugh" && laughDogAgeMs >= laughDogSequenceMs) ||
+            (resolveDogState !== "laugh" && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS))));
 
     if (canAdvanceResolve) {
       if (state.targetsPresented >= TARGETS_PER_ROUND) {
@@ -869,6 +930,8 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         startNextVolley(state, tweetsRef.current, timeMs);
       }
     }
+
+    drawScoreReveals(ctx, state, timeMs);
 
     for (const target of state.targets) {
       if (target.status !== "escaped" && target.fliesBehindTree) drawTarget(ctx, image, target, timeMs, flyFramesRef.current);
@@ -881,7 +944,16 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
 
     if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
-      drawDog(ctx, image, timeMs, resolveDogState, dogRiseOffset, shouldShowRetrieveDog ? state.retrieveDogX : undefined, dogOneBirdImageRef.current);
+      drawDog(
+        ctx,
+        image,
+        timeMs,
+        resolveDogState,
+        dogRiseOffset,
+        shouldShowRetrieveDog ? state.retrieveDogX : undefined,
+        dogOneBirdImageRef.current,
+        mode === "B" ? dogTwoBirdImageRef.current : null
+      );
     }
     if (introDogBehindGrass) {
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
@@ -896,7 +968,9 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
     drawSpriteHud(ctx, state, uiImagesRef.current);
 
-    if (timeMs - lastHudUpdateRef.current > 90) {
+    if (dogReturnedBehindGrass) {
+      setMicroReveal(null);
+    } else if (timeMs - lastHudUpdateRef.current > 90) {
       lastHudUpdateRef.current = timeMs;
       setMicroReveal((current) => (current && current.expiresAt < timeMs ? null : current));
     }
@@ -961,7 +1035,6 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     hit.vx = hit.direction * 55;
     hit.vy = 260;
     state.lastVolleyHitCount += 1;
-    state.score += hit.points;
 
     const record: HitRecord = {
       targetId: hit.id,
@@ -976,10 +1049,10 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     if (hit.tweet) {
       setMicroReveal({
         id: `${hit.id}_${now}`,
-        text: truncate(hit.tweet.text, 112),
+        text: truncate(hit.tweet.text, 140),
         date: formatDate(hit.tweet.createdAt),
         points: hit.points,
-        expiresAt: now + 1150
+        expiresAt: now + 3400
       });
     } else if (mode === "C") {
       setMicroReveal({
@@ -987,7 +1060,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         text: "Clay tweet shattered. No live tweet affected.",
         date: "practice target",
         points: hit.points,
-        expiresAt: now + 900
+        expiresAt: now + 3150
       });
     }
   }
@@ -1005,9 +1078,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       {microReveal ? (
         <div className="hud-overlay" aria-hidden="true">
           <div className="micro-reveal">
-            <strong>LAST HIT +{microReveal.points}</strong>
             <p>{microReveal.text}</p>
-            <small>{microReveal.date}</small>
           </div>
         </div>
       ) : null}

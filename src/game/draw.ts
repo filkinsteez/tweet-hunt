@@ -23,10 +23,12 @@ const INTRO_JUMP_UP_FRAMES = 9;
 const INTRO_JUMP_FALL_FRAMES = 14;
 const INTRO_JUMP_FRAMES = INTRO_JUMP_UP_FRAMES + INTRO_JUMP_FALL_FRAMES;
 const INTRO_JUMP_MS = 920;
-const FLY_SPRITE_SIZE = 106;
+const FLY_SPRITE_SIZE = 117;
 const FLY_ANIMATION_FPS = 12;
 const DOG_ONE_BIRD_WIDTH = 132;
+const DOG_TWO_BIRD_WIDTH = 168;
 const DOG_ONE_BIRD_Y = CANVAS_HEIGHT - 365;
+const DOG_TWO_BIRD_Y = CANVAS_HEIGHT - 365;
 const INTRO_JUMP_Y_OFFSETS = [
   -45,
   -82,
@@ -148,10 +150,15 @@ export function drawDog(
   state: "walk" | "flush" | "laugh" | "one" | "two",
   yOffset = 0,
   centerX?: number,
-  oneBirdImage?: HTMLImageElement | null
+  oneBirdImage?: HTMLImageElement | null,
+  twoBirdImage?: HTMLImageElement | null
 ) {
   if (state === "one" && oneBirdImage) {
     drawOneBirdDog(ctx, oneBirdImage, yOffset, centerX);
+    return;
+  }
+  if (state === "two" && twoBirdImage) {
+    drawTwoBirdDog(ctx, twoBirdImage, yOffset, centerX);
     return;
   }
 
@@ -196,8 +203,16 @@ function drawOneBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, 
   ctx.drawImage(image, drawX, DOG_ONE_BIRD_Y + yOffset, width, height);
 }
 
+function drawTwoBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, yOffset = 0, centerX?: number) {
+  const width = DOG_TWO_BIRD_WIDTH;
+  const height = (image.naturalHeight / image.naturalWidth) * width;
+  const drawX = centerX === undefined ? CANVAS_WIDTH / 2 - width / 2 : centerX - width / 2;
+
+  ctx.drawImage(image, drawX, DOG_TWO_BIRD_Y + yOffset, width, height);
+}
+
 export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, elapsedMs: number, timeMs: number) {
-  const groundY = CANVAS_HEIGHT - 255;
+  const groundY = CANVAS_HEIGHT - 265;
   const centerDogX = CANVAS_WIDTH / 2 - (53 * DOG_SCALE) / 2;
   const introStartX = 0;
   const introEndX = centerDogX - 85;

@@ -10,6 +10,7 @@
   --sky: #63c8ff;
   --grass: #2bb44a;
   --stroke: #08080c;
+  --tweet-font: "Nintendo NES Font", "Press Start 2P", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -109,7 +110,8 @@ button {
   background: url("../../Assets/Sprites/UI/UI_title_selection.jpg") 0 0 / 100% 100% no-repeat;
   image-rendering: pixelated;
   opacity: 0;
-  transform: translateY(-50%);
+  transform: translateY(-50%) scale(1.2);
+  transform-origin: left center;
   pointer-events: none;
 }
 
@@ -238,6 +240,10 @@ button {
 .micro-reveal p {
   margin: 4px 0 0;
   color: #fff9e8;
+  font-family: var(--tweet-font);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .side-panel {
@@ -284,8 +290,9 @@ button {
 
 .tweet-card blockquote {
   margin: 0;
-  font-size: 15px;
-  line-height: 1.45;
+  font-family: var(--tweet-font);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .tweet-meta {

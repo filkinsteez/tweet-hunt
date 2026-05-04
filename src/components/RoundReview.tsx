@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TARGETS_PER_ROUND } from "@/game/constants";
-import { formatDate } from "@/game/format";
+import { formatDate, truncate } from "@/game/format";
 import type { HitRecord, RoundResult } from "@/game/types";
 
 type Props = {
@@ -118,7 +118,7 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
                     <span>{formatDate(tweet.createdAt)}</span>
                     <span>+{hit.points}</span>
                   </div>
-                  <blockquote>{tweet.text}</blockquote>
+                  <blockquote>{truncate(tweet.text, 140)}</blockquote>
                   <div className="tweet-meta">
                     <span>{tweet.likes} likes</span>
                     <span>{tweet.reposts} reposts</span>
@@ -142,7 +142,7 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
               {escapedTweets.map((escape) => escape.tweet ? (
                 <article key={escape.targetId} className="tweet-card spared">
                   <div className="tweet-meta"><span>{formatDate(escape.tweet.createdAt)}</span><span>escaped</span></div>
-                  <blockquote>{escape.tweet.text}</blockquote>
+                  <blockquote>{truncate(escape.tweet.text, 140)}</blockquote>
                 </article>
               ) : null)}
             </div>
