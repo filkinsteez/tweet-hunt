@@ -2,7 +2,11 @@ import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE, HIT_REACTION_DURATI
 import { frameAt, spriteAtlas, type AnimationName, type FrameName } from "./atlas";
 import type { BirdColor, TargetEntity } from "./types";
 
-export type FlyFrameImages = [HTMLImageElement, HTMLImageElement];
+export type FlyFrameImages = {
+  image: HTMLImageElement;
+  columns: number;
+  rows: number;
+};
 
 const DOG_POSES = {
   walk: { x: 96, y: CANVAS_HEIGHT - 255 },
@@ -19,8 +23,10 @@ const INTRO_JUMP_UP_FRAMES = 9;
 const INTRO_JUMP_FALL_FRAMES = 14;
 const INTRO_JUMP_FRAMES = INTRO_JUMP_UP_FRAMES + INTRO_JUMP_FALL_FRAMES;
 const INTRO_JUMP_MS = 920;
-const FLY_SPRITE_SIZE = 118;
+const FLY_SPRITE_SIZE = 106;
 const FLY_ANIMATION_FPS = 12;
+const DOG_ONE_BIRD_WIDTH = 132;
+const DOG_ONE_BIRD_Y = CANVAS_HEIGHT - 365;
 const INTRO_JUMP_Y_OFFSETS = [
   -45,
   -82,
@@ -141,8 +147,14 @@ export function drawDog(
   timeMs: number,
   state: "walk" | "flush" | "laugh" | "one" | "two",
   yOffset = 0,
-  centerX?: number
+  centerX?: number,
+  oneBirdImage?: HTMLImageElement | null
 ) {
+  if (state === "one" && oneBirdImage) {
+    drawOneBirdDog(ctx, oneBirdImage, yOffset, centerX);
+    return;
+  }
+
   let animation: AnimationName = "dog_walk";
   let { x, y } = DOG_POSES.walk;
   let fps = 7;
@@ -174,6 +186,14 @@ export function drawDog(
   const drawX = centerX === undefined ? x : centerX - (width * DOG_SCALE) / 2;
 
   drawFrame(ctx, image, frameName, drawX, y + yOffset, DOG_SCALE);
+}
+
+function drawOneBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, yOffset = 0, centerX?: number) {
+  const width = DOG_ONE_BIRD_WIDTH;
+  const height = (image.naturalHeight / image.naturalWidth) * width;
+  const drawX = centerX === undefined ? CANVAS_WIDTH / 2 - width / 2 : centerX - width / 2;
+
+  ctx.drawImage(image, drawX, DOG_ONE_BIRD_Y + yOffset, width, height);
 }
 
 export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, elapsedMs: number, timeMs: number) {
@@ -213,7 +233,7 @@ function introJumpFrameIndex(elapsedMs: number) {
   return Math.min(Math.floor(jumpElapsedMs / frameMs), INTRO_JUMP_FRAMES - 1);
 }
 
-function birdAnimationName(color: BirdColor, flight: "side" | "diag" | "up", status: TargetEntity["status"]): AnimationName {
+function birdAnimationName(color: BirdColor, flight: "side" | "diag", status: TargetEntity["status"]): AnimationName {
   if (status === "hit") return `bird_${color}_fall` as AnimationName;
   return `bird_${color}_${flight}` as AnimationName;
 }
@@ -233,6 +253,8 @@ export function drawTarget(
   timeMs: number,
   flyFrames?: FlyFrameImages | null
 ) {
+  if (target.mechanicsState === "waiting" || target.mechanicsState === "clear") return;
+
   if (target.kind === "clay") {
     drawClay(ctx, target);
     return;
@@ -252,11 +274,13 @@ export function drawTarget(
 }
 
 function drawFlyTarget(ctx: CanvasRenderingContext2D, frames: FlyFrameImages, target: TargetEntity, timeMs: number) {
+  const cellWidth = frames.image.naturalWidth / frames.columns;
+  const cellHeight = frames.image.naturalHeight / frames.rows;
+  const flightRow = flightRowForTarget(target);
   const frameIndex =
     target.status === "hit" && timeMs - (target.hitAtMs ?? timeMs) >= HIT_REACTION_DURATION_MS
       ? 1
-      : Math.floor((timeMs / 1000) * FLY_ANIMATION_FPS) % frames.length;
-  const flyImage = frames[frameIndex];
+      : Math.floor((timeMs / 1000) * FLY_ANIMATION_FPS) % frames.columns;
   const direction = target.direction === -1 ? -1 : 1;
   const fallAgeMs = target.status === "hit" ? Math.max(timeMs - (target.hitAtMs ?? timeMs) - HIT_REACTION_DURATION_MS, 0) : 0;
   const fallRotation = Math.min(fallAgeMs / 500, 1) * direction * 0.8;
@@ -266,25 +290,47 @@ function drawFlyTarget(ctx: CanvasRenderingContext2D, frames: FlyFrameImages, ta
   ctx.translate(target.x, target.y);
   ctx.scale(direction, 1);
   ctx.rotate(flightTilt);
-  ctx.drawImage(flyImage, -FLY_SPRITE_SIZE / 2, -FLY_SPRITE_SIZE / 2, FLY_SPRITE_SIZE, FLY_SPRITE_SIZE);
+  ctx.drawImage(
+    frames.image,
+    frameIndex * cellWidth,
+    flightRow * cellHeight,
+    cellWidth,
+    cellHeight,
+    -FLY_SPRITE_SIZE / 2,
+    -FLY_SPRITE_SIZE / 2,
+    FLY_SPRITE_SIZE,
+    FLY_SPRITE_SIZE
+  );
   ctx.restore();
 }
 
+function flightRowForTarget(target: TargetEntity) {
+  if (target.status === "hit") return 0;
+  if (target.motionCode === 0 || target.motionCode === 16 || target.motionCode === 19) return Math.min(2, target.flight === "diag" ? 1 : 2);
+
+  if (target.flight === "diag") return 1;
+  return 0;
+}
+
 function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity) {
+  const shrink = Math.max(0.35, 1 - (target.clayImageIndex ?? 0) / 34);
+  const width = 34 * shrink;
+  const height = 12 * shrink;
+
   ctx.save();
   ctx.translate(target.x, target.y);
   ctx.rotate((target.x + target.y) / 70);
   ctx.fillStyle = target.status === "hit" ? "#f8e58b" : "#f06b36";
   ctx.strokeStyle = "#08080c";
-  ctx.lineWidth = 4;
+  ctx.lineWidth = Math.max(2, 4 * shrink);
   ctx.beginPath();
-  ctx.ellipse(0, 0, 34, 12, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, width, height, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   if (target.status === "hit") {
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-26, -24, 14, 14);
-    ctx.fillRect(12, 16, 16, 13);
+    ctx.fillRect(-26 * shrink, -24 * shrink, 14 * shrink, 14 * shrink);
+    ctx.fillRect(12 * shrink, 16 * shrink, 16 * shrink, 13 * shrink);
   }
   ctx.restore();
 }

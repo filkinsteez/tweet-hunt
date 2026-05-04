@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import titleAsset from "../../Assets/Sprites/title.jpg";
+import titleAsset from "../../Assets/Sprites/UI/title.jpg";
 import { GameCanvas } from "./GameCanvas";
 import { RoundReview } from "./RoundReview";
 import { selectTweetCandidates } from "@/game/mockTweets";

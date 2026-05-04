@@ -97,7 +97,7 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
         {error ? <p className="notice">{error}</p> : null}
 
         <div className="button-row" style={{ marginTop: 18 }}>
-          <button className="primary" type="button" onClick={onNextRound}>Next round</button>
+          {result.passed ? <button className="primary" type="button" onClick={onNextRound}>Next round</button> : null}
           <button className="secondary" type="button" onClick={onChangeGame}>Change game</button>
         </div>
       </section>

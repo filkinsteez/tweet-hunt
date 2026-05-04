@@ -95,19 +95,32 @@ button {
   right: 12%;
   height: 6%;
   border: 0;
-  border-radius: 10px;
   background: transparent;
   color: transparent;
 }
 
-.title-option:hover {
-  background: rgba(255, 223, 93, 0.12);
+.title-option::before {
+  content: "";
+  position: absolute;
+  left: -5%;
+  top: 40%;
+  width: 23px;
+  height: 17px;
+  background: url("../../Assets/Sprites/UI/UI_title_selection.jpg") 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.title-option:hover::before,
+.title-option:focus-visible::before {
+  opacity: 1;
 }
 
 .title-option:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
-  background: rgba(255, 223, 93, 0.16);
 }
 
 .title-option-a {

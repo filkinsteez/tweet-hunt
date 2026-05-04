@@ -28,14 +28,14 @@ export function modeLabel(mode: GameMode) {
 }
 
 export function passLineForRound(roundNumber: number) {
-  if (roundNumber <= 2) return 6;
-  if (roundNumber <= 5) return 7;
-  if (roundNumber <= 8) return 8;
-  if (roundNumber <= 12) return 9;
+  if (roundNumber <= 10) return 6;
+  if (roundNumber <= 12) return 7;
+  if (roundNumber <= 14) return 8;
+  if (roundNumber <= 19) return 9;
   return 10;
 }
 
 export function scoreForRound(roundNumber: number, targetIndex: number) {
-  const base = 500 + Math.min(roundNumber - 1, 9) * 100;
-  return base + (targetIndex % 3) * 200;
+  const scoreByColor = roundNumber <= 5 ? [500, 1000, 1500] : roundNumber <= 10 ? [800, 1600, 2400] : [1000, 2000, 3000];
+  return scoreByColor[targetIndex % scoreByColor.length];
 }

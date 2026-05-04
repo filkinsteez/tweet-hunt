@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import backgroundAsset from "../../Assets/Sprites/background.jpg";
-import foregroundAsset from "../../Assets/Sprites/foreground.png";
-import flyFrameOneAsset from "../../Assets/Illustrator/Exports/fly_1.png";
-import flyFrameTwoAsset from "../../Assets/Illustrator/Exports/fly_2.png";
-import midgroundAsset from "../../Assets/Sprites/midground.png";
-import treeAsset from "../../Assets/Sprites/tree.png";
+import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
+import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
+import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
+import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
+import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
+import treeAsset from "../../Assets/Sprites/Environment/tree.png";
 import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
 import ducksHitAtlasAsset from "../../Assets/Sprites/UI/UI_ducks_hit_atlas.jpg";
 import roundAsset from "../../Assets/Sprites/UI/UI_round.jpg";
@@ -28,12 +28,47 @@ import {
   RESOLVE_DELAY_MS,
   SHOTS_PER_VOLLEY,
   TARGETS_PER_ROUND,
-  VOLLEY_DURATION_MS,
   modeLabel,
   passLineForRound,
-  scoreForRound,
   targetsPerVolley
 } from "@/game/constants";
+import {
+  CLAY_PATHS,
+  FIXED_STEP_MS,
+  GAME_A_LAUNCH_PATHS,
+  GAME_B_PATHS,
+  NES_HEIGHT,
+  NES_WIDTH,
+  applyNextMotionMicroDelta,
+  canvasToNesX,
+  canvasToNesY,
+  chooseBoundaryMotion,
+  clayDistanceClass,
+  clayImageIndex,
+  clayRowOffset,
+  clayScoreForRound,
+  clayZapperShape,
+  createRng,
+  duckScoreForRound,
+  duckSpeedIndexForRound,
+  duckZapperShapeForRound,
+  flyAwayTimerForRound,
+  gameBDuckSpeedIndex,
+  initializeClayMemory,
+  modeReleaseDelay,
+  nesToCanvasX,
+  nesToCanvasY,
+  perfectBonusForRound,
+  pointHitsZapperShape,
+  projectClay,
+  readSpeedAndAdvance,
+  rngNext,
+  setMotionCode,
+  syncCanvasPosition,
+  targetColorForIndex,
+  updateClayFixedPoint,
+  type RngState
+} from "@/game/duckHuntMechanics";
 import {
   clearScene,
   drawCrosshair,
@@ -67,6 +102,14 @@ type RuntimeState = {
   hits: HitRecord[];
   escapes: RoundResult["escapes"];
   lastVolleyHitCount: number;
+  rng: RngState;
+  fixedStepAccumulatorMs: number;
+  lastFrameAtMs?: number;
+  fixedFrameCounter: number;
+  releaseDelayFrames: number;
+  pendingLaunches: number;
+  launchSlotIndex: number;
+  lastPathId: number;
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
   ended: boolean;
@@ -92,12 +135,24 @@ const UI_SCALE = 4;
 
 type UiImageKey = "shots" | "hit" | "hitAtlas" | "round" | "roundAtlas" | "score" | "scoreAtlas";
 
+const FOREGROUND_GRASS_TOP_Y = 520;
+const BIRD_LAUNCH_Y_MIN = FOREGROUND_GRASS_TOP_Y - 28;
+const BIRD_LAUNCH_Y_MAX = FOREGROUND_GRASS_TOP_Y - 14;
+const BIRD_FLIGHT_FLOOR_Y = FOREGROUND_GRASS_TOP_Y - 10;
+const MIN_BIRD_SCREEN_TIME_MS = 1800;
+
 const HUD_LAYOUT = {
-  round: { x: 92, y: CANVAS_HEIGHT - 152 },
-  shots: { x: 92, y: CANVAS_HEIGHT - 116 },
-  hit: { x: 252, y: CANVAS_HEIGHT - 112 },
-  score: { x: CANVAS_WIDTH - 232, y: CANVAS_HEIGHT - 112 }
+  round: { x: 35, y: CANVAS_HEIGHT - 137 },
+  shots: { x: 41, y: CANVAS_HEIGHT - 101 },
+  hit: { x: 198, y: CANVAS_HEIGHT - 97 },
+  score: { x: 707, y: CANVAS_HEIGHT - 97 }
 };
+
+function roundUiX(roundNumber: number) {
+  const shotsWidth = 29 * UI_SCALE;
+  const roundWidth = (roundNumber < 10 ? 24 : 32) * UI_SCALE;
+  return HUD_LAYOUT.shots.x + (shotsWidth - roundWidth) / 2;
+}
 
 function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
   return {
@@ -116,6 +171,14 @@ function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
     hits: [],
     escapes: [],
     lastVolleyHitCount: 0,
+    rng: createRng((roundNumber * 37 + mode.charCodeAt(0) + Math.floor(performance.now()) + Date.now()) & 0xff),
+    fixedStepAccumulatorMs: 0,
+    lastFrameAtMs: undefined,
+    fixedFrameCounter: 0,
+    releaseDelayFrames: modeReleaseDelay(mode),
+    pendingLaunches: 0,
+    launchSlotIndex: 0,
+    lastPathId: -1,
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
     ended: false
@@ -130,6 +193,11 @@ function drawUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: 
   ctx.drawImage(image, x, y, image.naturalWidth * UI_SCALE, image.naturalHeight * UI_SCALE);
 }
 
+function drawRoundUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, roundNumber: number, x: number, y: number) {
+  const sourceWidth = roundNumber < 10 ? 24 : image.naturalWidth;
+  ctx.drawImage(image, 0, 0, sourceWidth, image.naturalHeight, x, y, sourceWidth * UI_SCALE, image.naturalHeight * UI_SCALE);
+}
+
 function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, digit: number, x: number, y: number) {
   const glyphWidth = 8;
   const glyphHeight = 8;
@@ -141,8 +209,8 @@ function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, 
 function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, score: number) {
   const digits = Math.max(0, score).toString().padStart(6, "0").slice(-6);
   const glyphWidth = 8 * UI_SCALE;
-  const x = HUD_LAYOUT.score.x + 4 * UI_SCALE;
-  const y = HUD_LAYOUT.score.y + UI_SCALE;
+  const x = HUD_LAYOUT.score.x + 4 * UI_SCALE - 4;
+  const y = HUD_LAYOUT.score.y + UI_SCALE + 8;
 
   ctx.fillStyle = "#050508";
   ctx.fillRect(x, y, glyphWidth * 6, 8 * UI_SCALE);
@@ -154,11 +222,9 @@ function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement,
 function drawRoundNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, roundNumber: number) {
   const digits = Math.max(1, roundNumber).toString().slice(-2);
   const glyphWidth = 8 * UI_SCALE;
-  const x = HUD_LAYOUT.round.x + 16 * UI_SCALE;
+  const x = roundUiX(roundNumber) + 16 * UI_SCALE;
   const y = HUD_LAYOUT.round.y;
 
-  ctx.fillStyle = "#050508";
-  ctx.fillRect(x, y, glyphWidth * 2, 8 * UI_SCALE);
   for (let index = 0; index < digits.length; index += 1) {
     drawScoreDigit(ctx, atlas, Number(digits[index]), x + index * glyphWidth, y);
   }
@@ -176,7 +242,7 @@ function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hi
       0,
       duckWidth,
       duckHeight,
-      HUD_LAYOUT.hit.x + (36 + index * 8) * UI_SCALE,
+      HUD_LAYOUT.hit.x + (35 + index * 8) * UI_SCALE,
       y,
       duckWidth * UI_SCALE,
       duckHeight * UI_SCALE
@@ -187,7 +253,7 @@ function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hi
 function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number) {
   ctx.fillStyle = "#050508";
   for (let index = shotsRemaining; index < SHOTS_PER_VOLLEY; index += 1) {
-    ctx.fillRect(HUD_LAYOUT.shots.x + (6 + index * 8) * UI_SCALE, HUD_LAYOUT.shots.y + 3 * UI_SCALE, 5 * UI_SCALE, 9 * UI_SCALE);
+    ctx.fillRect(HUD_LAYOUT.shots.x + (4 + index * 8) * UI_SCALE, HUD_LAYOUT.shots.y + 3 * UI_SCALE, 5 * UI_SCALE, 9 * UI_SCALE);
   }
 }
 
@@ -205,7 +271,7 @@ function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, image
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  drawUiImage(ctx, round, HUD_LAYOUT.round.x, HUD_LAYOUT.round.y);
+  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber), HUD_LAYOUT.round.y);
   drawUiImage(ctx, shots, HUD_LAYOUT.shots.x, HUD_LAYOUT.shots.y);
   drawUiImage(ctx, hit, HUD_LAYOUT.hit.x, HUD_LAYOUT.hit.y);
   drawUiImage(ctx, score, HUD_LAYOUT.score.x, HUD_LAYOUT.score.y);
@@ -216,52 +282,113 @@ function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, image
   ctx.restore();
 }
 
-function spawnTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
-  const isClay = mode === "C";
-  const direction = Math.random() > 0.5 ? 1 : -1;
-  const speed = 150 + Math.min(roundNumber, 10) * 18 + Math.random() * 70;
-  const color = COLORS[targetIndex % COLORS.length];
+function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
+  const kind = mode === "C" ? "clay" : "bird";
+  const color = targetColorForIndex(targetIndex % COLORS.length);
+  const points = kind === "clay" ? clayScoreForRound(roundNumber) : duckScoreForRound(roundNumber, color);
 
-  if (isClay) {
-    const clayDirection = targetIndex % 2 === 0 ? -1 : 1;
-    return {
-      id: `clay_${roundNumber}_${targetIndex}`,
-      kind: "clay",
-      color,
-      status: "flying",
-      x: CANVAS_WIDTH / 2 + clayDirection * 40,
-      y: CANVAS_HEIGHT - 124,
-      vx: clayDirection * randomBetween(170, 260),
-      vy: -randomBetween(310, 420),
-      radius: 44,
-      createdAtMs: performance.now(),
-      points: scoreForRound(roundNumber, targetIndex),
-      direction: clayDirection as 1 | -1,
-      flight: "side"
-    };
-  }
-
-  const flight = targetIndex % 3 === 0 ? "up" : targetIndex % 3 === 1 ? "diag" : "side";
   return {
-    id: `tweet_target_${roundNumber}_${targetIndex}_${tweet?.id ?? "mock"}`,
-    kind: "bird",
+    id: kind === "clay" ? `clay_${roundNumber}_${targetIndex}` : `tweet_target_${roundNumber}_${targetIndex}_${tweet?.id ?? "mock"}`,
+    kind,
     tweet,
     color,
     status: "flying",
-    x: direction === 1 ? -70 : CANVAS_WIDTH + 70,
-    y: randomBetween(120, 360),
-    vx: direction * speed,
-    vy: randomBetween(-65, 70),
-    radius: 54,
+    mechanicsState: "waiting",
+    x: CANVAS_WIDTH / 2,
+    y: CANVAS_HEIGHT,
+    vx: 0,
+    vy: 0,
+    nesX: NES_WIDTH / 2,
+    nesY: NES_HEIGHT,
+    radius: 0,
     createdAtMs: performance.now(),
-    points: scoreForRound(roundNumber, targetIndex),
-    direction,
-    flight,
-    erraticPhase: Math.random() * Math.PI * 2,
-    erraticStrength: randomBetween(42, 78),
-    erraticRate: randomBetween(5.5, 8.5),
-    fliesBehindTree: Math.random() < 0.5
+    points,
+    direction: 1,
+    flight: "side",
+    slotIndex: targetIndex % targetsPerVolley(mode),
+    shootable: false
   };
+}
+
+function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
+  target.status = "flying";
+  target.mechanicsState = "flying";
+  target.createdAtMs = now;
+  target.shootable = true;
+
+  if (target.kind === "clay") {
+    const pathId = rngNext(state.rng) % CLAY_PATHS.length;
+    const memory = initializeClayMemory(CLAY_PATHS[pathId]);
+    const projection = projectClay(memory);
+    target.pathId = pathId;
+    target.clayMemory = memory;
+    target.nesX = projection.x;
+    target.nesY = projection.y;
+    target.distanceClass = clayDistanceClass(memory);
+    target.clayImageIndex = clayImageIndex(memory);
+    target.speedIndex = clayRowOffset(state.roundNumber) + (target.distanceClass ?? 0);
+    target.zapperShape = clayZapperShape(state.roundNumber, target.clayImageIndex ?? 0);
+    target.direction = target.slotIndex === 0 ? -1 : 1;
+    syncCanvasPosition(target);
+    return;
+  }
+
+  target.zapperShape = duckZapperShapeForRound(state.roundNumber);
+  target.flyAwayTimer = flyAwayTimerForRound(state.roundNumber);
+  target.flyAwayFlag = false;
+  target.motionPatternIndex = 0;
+  target.fliesBehindTree = (rngNext(state.rng) & 0x01) === 0;
+
+  if (state.mode === "B") {
+    const pathId = rngNext(state.rng) & 0x0f;
+    const pathData = GAME_B_PATHS[pathId];
+    target.pathId = pathId;
+    target.pathData = [...pathData];
+    target.pathIndex = 1;
+    target.segmentTimer = 0;
+    target.nesX = pathData[0];
+    target.nesY = 0xa8;
+    target.speedIndex = gameBDuckSpeedIndex(state.roundNumber, target.color);
+    setMotionCode(target, 0);
+    syncCanvasPosition(target);
+    loadNextGameBSegment(target);
+    return;
+  }
+
+  const pathKeys = Object.keys(GAME_A_LAUNCH_PATHS).map(Number);
+  let pathId = pathKeys[rngNext(state.rng) % pathKeys.length];
+  if (pathKeys.length > 1) {
+    while (pathId === state.lastPathId) {
+      pathId = pathKeys[rngNext(state.rng) % pathKeys.length];
+    }
+  }
+  state.lastPathId = pathId;
+  const [startX, launchFrames, motionCode] = GAME_A_LAUNCH_PATHS[pathId];
+  target.pathId = pathId;
+  target.nesX = startX;
+  target.nesY = 0xa8;
+  target.launchFlag = true;
+  target.segmentTimer = launchFrames;
+  target.speedIndex = duckSpeedIndexForRound(state.roundNumber);
+  setMotionCode(target, motionCode);
+  syncCanvasPosition(target);
+}
+
+function loadNextGameBSegment(target: TargetEntity) {
+  const pathData = target.pathData;
+  if (!pathData || target.pathIndex === undefined) return;
+
+  const duration = pathData[target.pathIndex];
+  const motionCode = pathData[target.pathIndex + 1] ?? 0;
+  target.pathIndex += 2;
+
+  if (duration === 0xff) {
+    target.mechanicsState = "clear";
+    return;
+  }
+
+  target.segmentTimer = duration;
+  setMotionCode(target, motionCode);
 }
 
 function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: number) {
@@ -271,7 +398,7 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   for (let index = 0; index < count; index += 1) {
     const targetIndex = state.targetsPresented + index;
     const tweet = state.mode === "C" ? undefined : tweets[state.nextTweetIndex + index % Math.max(tweets.length, 1)];
-    targets.push(spawnTarget(state.mode, state.roundNumber, targetIndex, tweet));
+    targets.push(createWaitingTarget(state.mode, state.roundNumber, targetIndex, tweet));
   }
 
   state.phase = "active";
@@ -283,13 +410,17 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   state.volleyNumber += 1;
   state.shotsRemaining = SHOTS_PER_VOLLEY;
   state.lastVolleyHitCount = 0;
+  state.releaseDelayFrames = modeReleaseDelay(state.mode);
+  state.pendingLaunches = targets.length;
+  state.launchSlotIndex = 0;
   state.retrieveDogTriggeredAtMs = undefined;
   state.retrieveDogX = undefined;
 }
 
 function markEscaped(state: RuntimeState, target: TargetEntity, now: number) {
-  if (target.status !== "flying") return;
+  if (target.status !== "flying" || target.mechanicsState === "waiting") return;
   target.status = "escaped";
+  target.mechanicsState = "clear";
   target.escapedAtMs = now;
   state.escapes.push({
     targetId: target.id,
@@ -303,6 +434,9 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
   if (state.ended) return;
   state.ended = true;
   state.phase = "ended";
+  if (state.hits.length === TARGETS_PER_ROUND) {
+    state.score += perfectBonusForRound(state.roundNumber);
+  }
   const passLine = passLineForRound(state.roundNumber);
   onRoundEnd({
     mode: state.mode,
@@ -317,12 +451,191 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
   });
 }
 
+function advanceFixedStep(state: RuntimeState, now: number) {
+  if (state.phase !== "active" && state.phase !== "resolve") return;
+  state.fixedFrameCounter += 1;
+
+  if (state.phase === "active") {
+    advanceLaunchQueue(state, now);
+    if (state.shotsRemaining <= 0) {
+      for (const target of state.targets) {
+        if (target.kind === "bird" && target.mechanicsState === "flying" && !target.flyAwayFlag) {
+          target.flyAwayFlag = true;
+          setMotionCode(target, 0);
+        }
+      }
+    }
+  }
+
+  for (const target of state.targets) {
+    if (target.mechanicsState === "hit_pause") {
+      target.hitPauseTimer = Math.max((target.hitPauseTimer ?? 0) - 1, 0);
+      if (target.hitPauseTimer === 0) {
+        target.mechanicsState = target.kind === "clay" ? "fragmenting" : "falling";
+      }
+      continue;
+    }
+
+    if (target.mechanicsState === "falling") {
+      updateFallingDuck(target);
+      continue;
+    }
+
+    if (target.mechanicsState === "fragmenting") {
+      target.hitPauseTimer = Math.max((target.hitPauseTimer ?? 0) - 1, 0);
+      if (target.hitPauseTimer === 0) target.mechanicsState = "clear";
+      continue;
+    }
+
+    if (state.phase !== "active" || target.mechanicsState !== "flying" || target.status !== "flying") continue;
+
+    if (target.kind === "clay") updateClayTarget(state, target);
+    else if (state.mode === "B") updateGameBDuck(state, target);
+    else updateGameADuck(state, target);
+  }
+
+  if (state.phase === "active" && !state.targets.some(isTargetUnresolved)) {
+    state.phase = "resolve";
+    state.phaseStartedAtMs = now;
+  }
+}
+
+function advanceLaunchQueue(state: RuntimeState, now: number) {
+  if (state.pendingLaunches <= 0) return;
+
+  if (state.releaseDelayFrames > 0) {
+    state.releaseDelayFrames -= 1;
+    return;
+  }
+
+  const target = state.targets[state.launchSlotIndex];
+  if (target && target.mechanicsState === "waiting") {
+    launchTarget(state, target, now);
+  }
+
+  state.pendingLaunches -= 1;
+  state.launchSlotIndex += 1;
+  state.releaseDelayFrames = state.pendingLaunches > 0 ? (rngNext(state.rng) & 0x3f) + 1 : 0;
+}
+
+function updateGameADuck(state: RuntimeState, target: TargetEntity) {
+  if (target.launchFlag) {
+    if ((target.nesY ?? 0) < 0x88) {
+      target.launchFlag = false;
+      chooseBoundaryMotion(target, "bottom", state.rng);
+    } else {
+      moveTargetBySpeedCycle(target);
+      return;
+    }
+  }
+
+  if (!target.flyAwayFlag && (state.fixedFrameCounter & 1) === 1) {
+    target.flyAwayTimer = Math.max((target.flyAwayTimer ?? 0) - 1, 0);
+    if (target.flyAwayTimer === 0) {
+      target.flyAwayFlag = true;
+    }
+  }
+
+  if (target.flyAwayFlag) {
+    updateDuckEscapeBoundary(state, target);
+    if (target.status === "escaped") return;
+    moveTargetBySpeedCycle(target);
+    return;
+  }
+
+  redirectAtBoundary(state, target);
+  moveTargetBySpeedCycle(target);
+}
+
+function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
+  if (target.flyAwayFlag) {
+    moveTargetBySpeedCycle(target);
+    if ((target.nesY ?? 0) < -16) markEscaped(state, target, performance.now());
+    return;
+  }
+
+  if ((target.segmentTimer ?? 0) <= 0) loadNextGameBSegment(target);
+  if (target.mechanicsState === "clear") {
+    markEscaped(state, target, performance.now());
+    return;
+  }
+
+  moveTargetBySpeedCycle(target);
+  target.segmentTimer = Math.max((target.segmentTimer ?? 0) - 1, 0);
+}
+
+function updateClayTarget(state: RuntimeState, target: TargetEntity) {
+  const memory = target.clayMemory;
+  if (!memory) return;
+
+  const distanceClass = clayDistanceClass(memory);
+  target.distanceClass = distanceClass;
+  target.speedIndex = clayRowOffset(state.roundNumber) + distanceClass;
+  const steps = readSpeedAndAdvance(target);
+  for (let step = 0; step < steps; step += 1) updateClayFixedPoint(memory);
+
+  const projection = projectClay(memory);
+  target.nesX = projection.x;
+  target.nesY = projection.y;
+  target.clayImageIndex = clayImageIndex(memory);
+  target.zapperShape = clayZapperShape(state.roundNumber, target.clayImageIndex);
+  syncCanvasPosition(target);
+
+  if ((target.nesX ?? 0) < -20 || (target.nesX ?? 0) > NES_WIDTH + 20 || (target.nesY ?? 0) > NES_HEIGHT + 20 || distanceClass >= 7) {
+    markEscaped(state, target, performance.now());
+  }
+}
+
+function updateFallingDuck(target: TargetEntity) {
+  target.nesY = (target.nesY ?? canvasToNesY(target.y)) + 3;
+  target.nesX = (target.nesX ?? canvasToNesX(target.x)) + target.direction * 0.25;
+  target.vy = 260;
+  target.vx = target.direction * 55;
+  syncCanvasPosition(target);
+  if ((target.nesY ?? 0) > NES_HEIGHT + 20) target.mechanicsState = "clear";
+}
+
+function redirectAtBoundary(state: RuntimeState, target: TargetEntity) {
+  const x = target.nesX ?? 0;
+  const y = target.nesY ?? 0;
+  if (y < 0x20) chooseBoundaryMotion(target, "top", state.rng);
+  else if (y >= 0x90) chooseBoundaryMotion(target, "bottom", state.rng);
+  if (x < 0x10) chooseBoundaryMotion(target, "left", state.rng);
+  else if (x >= 0xf0) chooseBoundaryMotion(target, "right", state.rng);
+}
+
+function updateDuckEscapeBoundary(state: RuntimeState, target: TargetEntity) {
+  const x = target.nesX ?? 0;
+  const y = target.nesY ?? 0;
+  if (y < 0x08 || x < 0x0c || x >= 0xf4) {
+    markEscaped(state, target, performance.now());
+    return;
+  }
+  if (y >= 0x90) chooseBoundaryMotion(target, "bottom", state.rng);
+}
+
+function moveTargetBySpeedCycle(target: TargetEntity) {
+  const steps = readSpeedAndAdvance(target);
+  for (let step = 0; step < steps; step += 1) applyNextMotionMicroDelta(target);
+}
+
+function isTargetUnresolved(target: TargetEntity) {
+  return (
+    target.mechanicsState === "waiting" ||
+    target.mechanicsState === "flying" ||
+    target.mechanicsState === "hit_pause" ||
+    target.mechanicsState === "falling" ||
+    target.mechanicsState === "fragmenting"
+  );
+}
+
 export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const flyFramesRef = useRef<FlyFrameImages | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
   const foregroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -353,22 +666,14 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
-    const frameOne = new Image();
-    const frameTwo = new Image();
-    let loadedCount = 0;
-    const handleLoad = () => {
-      loadedCount += 1;
-      if (loadedCount === 2) flyFramesRef.current = [frameOne, frameTwo];
+    const image = new Image();
+    image.onload = () => {
+      flyFramesRef.current = { image, columns: 4, rows: 3 };
     };
-
-    frameOne.onload = handleLoad;
-    frameTwo.onload = handleLoad;
-    frameOne.src = flyFrameOneAsset.src;
-    frameTwo.src = flyFrameTwoAsset.src;
+    image.src = chatGptBirdFlyAsset.src;
 
     return () => {
-      frameOne.onload = null;
-      frameTwo.onload = null;
+      image.onload = null;
       flyFramesRef.current = null;
     };
   }, []);
@@ -409,6 +714,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       backgroundImage.onload = null;
       backgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const dogOneBirdImage = new Image();
+    dogOneBirdImage.src = dogOneBirdAsset.src;
+    dogOneBirdImage.onload = () => {
+      dogOneBirdImageRef.current = dogOneBirdImage;
+    };
+
+    return () => {
+      dogOneBirdImage.onload = null;
+      dogOneBirdImageRef.current = null;
     };
   }, []);
 
@@ -477,64 +795,17 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
 
     clearScene(ctx, backgroundImageRef.current);
 
-    const dt = 1 / 60;
     if (state.phase === "intro" && timeMs - state.phaseStartedAtMs >= ROUND_INTRO_DURATION_MS) {
       startNextVolley(state, tweetsRef.current, timeMs);
     }
 
     if (state.phase === "active" || state.phase === "resolve") {
-      for (const target of state.targets) {
-        if (target.status === "hit") {
-          const hitAgeMs = timeMs - (target.hitAtMs ?? timeMs);
-          if (hitAgeMs >= HIT_REACTION_DURATION_MS) {
-            target.x += target.vx * dt;
-            target.y += target.vy * dt;
-            target.vy += 620 * dt;
-          }
-        }
-      }
-    }
-
-    if (state.phase === "active") {
-      for (const target of state.targets) {
-        if (target.status === "flying") {
-          target.x += target.vx * dt;
-          target.y += target.vy * dt;
-
-          if (target.kind === "clay") {
-            target.vy += 210 * dt;
-          } else {
-            const elapsedSeconds = (timeMs - target.createdAtMs) / 1000;
-            const phase = target.erraticPhase ?? 0;
-            const strength = target.erraticStrength ?? 52;
-            const rate = target.erraticRate ?? 6.5;
-            const flutter = Math.sin(elapsedSeconds * rate + phase);
-            const dart = Math.sin(elapsedSeconds * (rate * 1.7) + phase * 0.5);
-
-            target.vy += (flutter * strength + dart * strength * 0.45) * dt;
-            target.vx += target.direction * dart * strength * 0.18 * dt;
-            if (target.y < 82 || target.y > CANVAS_HEIGHT - 250) target.vy *= -1;
-          }
-        }
-
-      }
-
-      const volleyExpired = timeMs - state.volleyStartedAtMs > VOLLEY_DURATION_MS;
-      const outOfBoundsTargets = state.targets.filter(
-        (target) =>
-          target.status === "flying" &&
-          (target.x < -160 || target.x > CANVAS_WIDTH + 160 || target.y < -120 || target.y > CANVAS_HEIGHT + 160)
-      );
-      for (const target of outOfBoundsTargets) markEscaped(state, target, timeMs);
-
-      if (volleyExpired || state.shotsRemaining <= 0) {
-        for (const target of state.targets) markEscaped(state, target, timeMs);
-      }
-
-      const unresolved = state.targets.some((target) => target.status === "flying");
-      if (!unresolved) {
-        state.phase = "resolve";
-        state.phaseStartedAtMs = timeMs;
+      if (state.lastFrameAtMs === undefined) state.lastFrameAtMs = timeMs;
+      state.fixedStepAccumulatorMs += Math.min(timeMs - state.lastFrameAtMs, 250);
+      state.lastFrameAtMs = timeMs;
+      while (state.fixedStepAccumulatorMs >= FIXED_STEP_MS) {
+        advanceFixedStep(state, timeMs);
+        state.fixedStepAccumulatorMs -= FIXED_STEP_MS;
       }
     }
 
@@ -577,6 +848,14 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         dogRiseOffset = Math.min(progress, 1) ** 2 * 120;
       }
     }
+    if (shouldShowLaughDog) {
+      const laughDogAgeMs = timeMs - state.phaseStartedAtMs - DOG_POP_DELAY_MS;
+      if (laughDogAgeMs < DOG_RISE_DURATION_MS) {
+        const progress = laughDogAgeMs / DOG_RISE_DURATION_MS;
+        const ease = 1 - (1 - progress) ** 2;
+        dogRiseOffset = (1 - ease) * 120;
+      }
+    }
 
     const canAdvanceResolve =
       state.phase === "resolve" &&
@@ -602,7 +881,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
 
     if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
-      drawDog(ctx, image, timeMs, resolveDogState, dogRiseOffset, shouldShowRetrieveDog ? state.retrieveDogX : undefined);
+      drawDog(ctx, image, timeMs, resolveDogState, dogRiseOffset, shouldShowRetrieveDog ? state.retrieveDogX : undefined, dogOneBirdImageRef.current);
     }
     if (introDogBehindGrass) {
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
@@ -656,20 +935,28 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     if (!state || state.phase !== "active" || state.shotsRemaining <= 0) return;
 
     const point = resolveCanvasPosition(event);
+    const nesPoint = { x: canvasToNesX(point.x), y: canvasToNesY(point.y) };
     state.shotsRemaining -= 1;
     state.shotsFired += 1;
 
-    const hittable = state.targets
-      .filter((target) => target.status === "flying")
-      .map((target) => ({ target, distance: Math.hypot(target.x - point.x, target.y - point.y) }))
-      .filter((entry) => entry.distance <= entry.target.radius)
-      .sort((a, b) => a.distance - b.distance);
+    const hit = state.targets.find((target) => {
+      if (target.status !== "flying" || target.mechanicsState !== "flying" || !target.shootable) return false;
+      return pointHitsZapperShape(
+        nesPoint.x,
+        nesPoint.y,
+        target.nesX ?? canvasToNesX(target.x),
+        target.nesY ?? canvasToNesY(target.y),
+        target.zapperShape ?? (target.kind === "clay" ? clayZapperShape(state.roundNumber, target.clayImageIndex ?? 0) : duckZapperShapeForRound(state.roundNumber))
+      );
+    });
 
-    const hit = hittable[0]?.target;
     if (!hit) return;
 
     const now = performance.now();
     hit.status = "hit";
+    hit.mechanicsState = "hit_pause";
+    hit.shootable = false;
+    hit.hitPauseTimer = hit.kind === "clay" ? 18 : Math.ceil(HIT_REACTION_DURATION_MS / FIXED_STEP_MS);
     hit.hitAtMs = now;
     hit.vx = hit.direction * 55;
     hit.vy = 260;

@@ -1,0 +1,1175 @@
+DUCK HUNT MECHANICS IMPLEMENTATION SPEC FOR CURSOR
+Plaintext engineering brief
+
+Scope
+
+Build a deterministic gameplay-mechanics recreation of NES Duck Hunt with these modes only:
+
+1. GAME_A_ONE_DUCK: one duck at a time, single player only.
+2. GAME_B_TWO_DUCKS: two ducks per wave, single player only.
+3. GAME_C_CLAY_SHOOTING: two clay pigeons per wave, single player only.
+
+Do not implement the hidden second-player duck-control behavior. Ignore controller-based duck steering entirely. This spec is for target behavior, shooting rules, round progression, scoring hooks, and timing. It does not include original art, original audio, title-screen behavior, pause behavior, or top-score persistence.
+
+Use a fixed 60 fps gameplay update. Use a 256 x 240 NES virtual coordinate space, then scale to your display resolution. Keep entity positions as integer NES pixels unless a section says fixed point.
+
+Source basis
+
+- Duck Hunt disassembly, Duck-ssembly-Hunt, RussianManSMWC.
+- Duck Hunt NES instruction booklet.
+- NESdev Zapper behavior notes.
+- Empirical flight analysis by GG for sanity checking speed, duration, and hitbox changes.
+
+Implementation priority
+
+To make the game feel like Duck Hunt, do these exactly:
+
+1. Use a 60 fps fixed-step update.
+2. Use motion-code micro-patterns, not smooth random velocities.
+3. Use the speed-cycle table to apply 1 to 7 movement substeps per frame.
+4. Use scripted paths for GAME_B_TWO_DUCKS.
+5. Use launch paths plus boundary-driven random redirection for GAME_A_ONE_DUCK.
+6. Use 3 shots per duck or pair.
+7. Use 10 targets per round.
+8. Use the pass-line table exactly.
+9. Shrink the Zapper hitbox by round.
+10. For clay pigeons, use the fixed-point projectile update and distance-based hitbox shrink.
+
+------------------------------------------------------------
+1. GLOBAL MODEL
+------------------------------------------------------------
+
+Constants
+
+FPS = 60
+SCREEN_WIDTH = 256
+SCREEN_HEIGHT = 240
+TARGETS_PER_ROUND = 10
+SHOTS_PER_WAVE = 3
+
+Modes
+
+GAME_A_ONE_DUCK = 0
+GAME_B_TWO_DUCKS = 1
+GAME_C_CLAY_SHOOTING = 2
+
+Important global variables
+
+mode
+roundNumber             // human integer, 1, 2, 3, etc. Original stores this as BCD.
+shotCount               // starts at 3 for each duck or pair
+currentHitCount          // hits in current round
+requiredHitCount         // pass line requirement
+currentTargetCount       // total ducks or clays released this round
+currentWaveHitCount      // ducks or clays hit during this wave, 0 to 2
+releaseDelayFrames       // global delay before next target in current wave can launch
+lastPathId               // initialized to -1 or 0xFF at round start
+rngState[4]              // 4 bytes, see RNG section
+
+Round pass-line table
+
+Rounds 1-10:  requiredHitCount = 6
+Rounds 11-12: requiredHitCount = 7
+Rounds 13-14: requiredHitCount = 8
+Rounds 15-19: requiredHitCount = 9
+Rounds 20+:   requiredHitCount = 10
+
+Original table, by round index:
+
+[6,6,6,6,6,6,6,6,6,6,7,7,8,8,9,9,9,9,9,10, repeat 10]
+
+Round end rule
+
+A round ends after currentTargetCount reaches 10 and the last active target in the round has cleared. If currentHitCount >= requiredHitCount, advance to the next round. Otherwise, game over.
+
+------------------------------------------------------------
+2. RNG MODEL
+------------------------------------------------------------
+
+The original uses a 4-byte shift-register RNG. For gameplay matching, implement this for explicit RNG calls used in path selection, release delay, color selection, and boundary direction changes.
+
+Pseudocode
+
+function rngNext():
+    feedback = ((rngState[0] & 0x02) ^ (rngState[1] & 0x02)) != 0
+    carry = feedback ? 1 : 0
+
+    for i in 0..3:
+        old = rngState[i]
+        rngState[i] = ((carry << 7) | (old >> 1)) & 0xFF
+        carry = old & 0x01
+
+    return rngState[0]
+
+Seed
+
+If your seed byte is 0, initialize rngState[0] to 0x5F. For a modern deterministic clone, expose a seed option. The original also advances RNG while waiting for NMI, so exact emulator-level RNG timing depends on CPU timing. For a gameplay clone, call rngNext only at the explicit places described below.
+
+------------------------------------------------------------
+3. ZAPPER AND HIT DETECTION MODEL
+------------------------------------------------------------
+
+Modern input replacement
+
+Use the mouse, pointer, or reticle position as the Zapper aim point. Convert the aim point to NES virtual coordinates.
+
+When the player fires:
+
+1. If shotCount == 0, ignore the shot.
+2. Decrement shotCount immediately.
+3. Test active shootable targets in target slot order.
+4. If a target is hit, set it to its HIT state, increment currentHitCount, increment currentWaveHitCount, and stop testing further targets for that shot.
+5. If nothing is hit and shotCount reaches 0, ducks enter fly-away behavior. Clays keep flying until their trajectory ends.
+
+Original CRT behavior
+
+The original flashes white 8 x 8 sprite squares over a target on a black screen. For a modern clone, simulate the union of those white 8 x 8 squares.
+
+Hit test function
+
+function pointHitsZapperShape(pointX, pointY, targetX, targetY, shapeId):
+    for each (dy, dx) in ZAPPER_SHAPES[shapeId]:
+        rectX = targetX + signed(dx)
+        rectY = targetY + signed(dy)
+        if pointX >= rectX and pointX < rectX + 8 and
+           pointY >= rectY and pointY < rectY + 8:
+            return true
+    return false
+
+Important: these offset pairs are listed as dy, dx. The first value modifies Y, the second modifies X.
+
+Duck hitbox shape by round
+
+Rounds 1-23:  shape 9
+Rounds 24-26: shape 10
+Rounds 27+:   shape 11
+
+Duck zapper shape 9, large 4 x 4 grid
+
+shape 9 offsets:
+(-16,-16), (-16,-8), (-16,0), (-16,8),
+( -8,-16), ( -8,-8), ( -8,0), ( -8,8),
+(  0,-16), (  0,-8), (  0,0), (  0,8),
+(  8,-16), (  8,-8), (  8,0), (  8,8)
+
+Duck zapper shape 10, medium 3 x 3 grid
+
+shape 10 offsets:
+(-12,-11), (-12,-3), (-12,3),
+( -4,-11), ( -4,-3), ( -4,3),
+(  4,-11), (  4,-3), (  4,3)
+
+Duck zapper shape 11, small 3 x 3 grid
+
+shape 11 offsets:
+(-11,-9), (-11,-1), (-11,1),
+( -3,-9), ( -3,-1), ( -3,1),
+(  3,-9), (  3,-1), (  3,1)
+
+Clay zapper shapes
+
+shape 0 offsets:
+(-12,-12), (-12,-4), (-12,4),
+( -4,-12), ( -4,-4), ( -4,4),
+(  4,-12), (  4,-4), (  4,4)
+
+shape 1 offsets:
+(-9,-11), (-9,-3), (-9,3),
+(-1,-11), (-1,-3), (-1,3),
+( 1,-11), ( 1,-3), ( 1,3)
+
+shape 2 offsets:
+(-7,-9), (-7,-1), (-7,1),
+(-1,-9), (-1,-1), (-1,1)
+
+shape 3 offsets:
+(-6,-8), (-6,0),
+(-2,-8), (-2,0)
+
+shape 4 offsets:
+(-6,-6), (-6,-2),
+(-2,-6), (-2,-2)
+
+shape 5 offsets:
+(-4,-4)
+
+Clay shape table
+
+CLAY_ZAPPER_SHAPES = [
+    0,0,0,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5
+]
+
+When a clay pigeon is drawn, compute imageIndex from distance as described in the clay section. Then:
+
+if roundNumber <= 11: difficultyOffset = 0
+else if roundNumber <= 22: difficultyOffset = 3
+else: difficultyOffset = 6
+
+shapeId = CLAY_ZAPPER_SHAPES[difficultyOffset + imageIndex]
+
+------------------------------------------------------------
+4. DUCK ENTITY STATES
+------------------------------------------------------------
+
+DuckState
+
+0 IDLE_OR_CLEARED
+1 INIT
+2 READY_WAITING_TO_LAUNCH
+3 FLYING_AND_SHOOTABLE
+4 HIT_MARK_AND_SCORE
+5 HIT_PAUSE
+6 START_FALLING
+7 FALLING
+8 CLEAR
+
+Duck entity fields
+
+active
+state
+x, y
+horizontalDirection
+imageFrame
+zapperShape
+scoreReward
+pathId
+pathData
+pathIndex
+segmentTimer
+motionCode
+motionPatternIndex
+speedIndex
+launchFlag              // GAME_A only. True until y < 0x88.
+flyAwayFlag
+flyAwayTimer            // GAME_A only. Counts down after launch ends.
+freeFlightMode          // GAME_A after launchFlag clears.
+
+Initial duck values
+
+active = true
+state = INIT
+y = 0xA8
+x = 0x80, then overwritten by selected path start X
+horizontalDirection = 0
+zapperShape = selected by round
+shotCount is global per wave, not per duck
+
+------------------------------------------------------------
+5. DUCK MOTION MICRO-PATTERNS
+------------------------------------------------------------
+
+Do not use smooth velocities. Each motion code is a repeating list of tiny signed pixel deltas. Each movement substep consumes one delta pair. If the pattern reaches the terminator, loop to the beginning of that pattern.
+
+Each pair is dy, dx.
+
+MOTION_PATTERNS = {
+  0:  [(-1,  0)],
+  1:  [(-1,  1), (-1, 0), (-1, 0), (-1, 1), (-1, 0), (0, 0)],
+  2:  [(-1,  1), (-1, 1), (0, 0)],
+  3:  [( 0,  1), (-1, 1), (0, 1), (-1, 1), (0, 1), (0, 0)],
+  4:  [( 0,  1)],
+  5:  [( 0,  1), ( 1, 1), (0, 1), ( 1, 1), (0, 1), (0, 0)],
+  6:  [( 1,  1), ( 1, 1), (0, 0)],
+  7:  [( 1,  1), ( 1, 0), (1, 0), (1, 1), (1, 0), (0, 0)],
+  8:  [( 1,  0)],
+  9:  [( 1, -1), ( 1, 0), (1, 0), (1,-1), (1, 0), (0, 0)],
+ 10:  [( 1, -1), ( 1,-1), (0, 0)],
+ 11:  [( 0, -1), ( 1,-1), (0,-1), (1,-1), (0,-1), (0, 0)],
+ 12:  [( 0, -1)],
+ 13:  [( 0, -1), (-1,-1), (0,-1), (-1,-1), (0,-1), (0, 0)],
+ 14:  [(-1, -1), (-1,-1), (0, 0)],
+ 15:  [(-1, -1), (-1, 0), (-1,0), (-1,-1), (-1,0), (0, 0)],
+ 16:  [( 2,  1), ( 2,-1)],
+ 17:  [(-1, -2)],
+ 18:  [(-2, -1)],
+ 19:  [(-2,  0)],
+ 20:  [(-2,  1)],
+ 21:  [(-1,  2)]
+}
+
+Notes
+
+- Codes 0-15 are the normal compass-like duck flight directions.
+- Code 16 is used for falling wobble.
+- Codes 18-20 are fast upward escape motions.
+- Pattern entries of (0,0) are real no-op substeps in some patterns, not terminators. The terminator is only in the original data table. In this high-level representation, just loop the list.
+
+------------------------------------------------------------
+6. SPEED CYCLE TABLE
+------------------------------------------------------------
+
+A speed index points into a 4-entry cycle. Each frame, read one value from the cycle. That value is the number of motion substeps to apply this frame. Then advance within the 4-entry group. When the index reaches the end of the group, wrap back to the start of that same 4-entry group.
+
+SPEED_CYCLES_BY_INDEX = {
+  0x00: [1,1,1,1],
+  0x04: [2,1,1,1],
+  0x08: [2,1,2,1],
+  0x0C: [2,2,2,1],
+  0x10: [2,2,2,2],
+  0x14: [3,2,3,2],
+  0x18: [3,3,3,3],
+  0x1C: [4,3,4,3],
+  0x20: [4,4,4,4],
+  0x24: [5,5,5,5],
+  0x28: [6,6,6,6],
+  0x2C: [7,7,7,7]
+}
+
+Implementation
+
+function readSpeedAndAdvance(entity):
+    cycleStart = entity.speedIndex & 0xFC
+    cycleOffset = entity.speedIndex & 0x03
+    steps = SPEED_TABLE[cycleStart + cycleOffset]
+    cycleOffset = (cycleOffset + 1) & 3
+    entity.speedIndex = cycleStart + cycleOffset
+    return steps
+
+SPEED_TABLE flattened version
+
+[1,1,1,1, 2,1,1,1, 2,1,2,1, 2,2,2,1,
+ 2,2,2,2, 3,2,3,2, 3,3,3,3, 4,3,4,3,
+ 4,4,4,4, 5,5,5,5, 6,6,6,6, 7,7,7,7]
+
+------------------------------------------------------------
+7. DUCK COLOR AND SCORE HOOKS
+------------------------------------------------------------
+
+Duck color configuration is selected once per duck wave.
+
+At wave spawn:
+
+if roundNumber == 1:
+    currentDuckConfiguration = rngNext() & 0x03
+else:
+    currentDuckConfiguration = rngNext() & 0x07
+
+DuckColorConfigurations
+
+High nibble is first duck color. Low nibble is second duck color.
+
+0x00: first green,  second green
+0x01: first green,  second purple
+0x10: first purple, second green
+0x11: first purple, second purple
+0x12: first purple, second red
+0x20: first red,    second green
+0x21: first red,    second purple
+0x22: first red,    second red
+
+Color indexes
+
+0 = green or black normal duck
+1 = purple or blue bonus duck
+2 = red bonus duck
+
+Score values
+
+Rounds 1-5:
+normal = 500, purple/blue = 1000, red = 1500
+
+Rounds 6-10:
+normal = 800, purple/blue = 1600, red = 2400
+
+Rounds 11+:
+normal = 1000, purple/blue = 2000, red = 3000
+
+Perfect bonus
+
+Rounds 1-10:  10000
+Rounds 11-15: 15000
+Rounds 16-20: 20000
+Rounds 21+:   30000
+
+------------------------------------------------------------
+8. GAME A, ONE DUCK, SINGLE PLAYER ONLY
+------------------------------------------------------------
+
+Wave structure
+
+- One duck per wave.
+- Three shots per duck.
+- No second-player duck control.
+- The dog presentation can be simplified, but the duck launch timing should still start with releaseDelayFrames = 0x30 after the dog/wave handoff.
+
+Game A duck speed by round
+
+round 1:      speedIndex = 0x10, average 2.00 substeps/frame
+rounds 2-3:  speedIndex = 0x14, average 2.50 substeps/frame
+rounds 4-5:  speedIndex = 0x18, average 3.00 substeps/frame
+rounds 6-7:  speedIndex = 0x1C, average 3.50 substeps/frame
+rounds 8-9:  speedIndex = 0x20, average 4.00 substeps/frame
+rounds 10-11:speedIndex = 0x24, average 5.00 substeps/frame
+rounds 12+:  speedIndex = 0x28, average 6.00 substeps/frame
+
+Game A fly-away timer
+
+The timer starts only after the launch phase ends, meaning after the duck rises above the grass and y < 0x88.
+
+Rounds 1-10:  timer = 0x7D ticks. Decrements every other frame. About 4.17 seconds after launch ends.
+Rounds 11-19: timer = 0x5D ticks. Decrements every other frame. About 3.10 seconds after launch ends.
+Rounds 20+:   timer = 0x3E ticks. Decrements every other frame. About 2.07 seconds after launch ends.
+
+This is not the full visible lifetime. Full visible lifetime includes launch travel plus escape travel. Empirical sanity target: around 11.5 seconds visible on round 1, falling to about 5.1 seconds by round 20+.
+
+Game A launch paths
+
+Path IDs 0x10-0x1F are used. Each entry is:
+
+[startX, launchSegmentDuration, initialMotionCode]
+
+launchSegmentDuration is always 0xE0 substeps. The launch phase ends early when y < 0x88.
+
+GAME_A_LAUNCH_PATHS = {
+  0x10: [0x40,0xE0,0x01],
+  0x11: [0x80,0xE0,0x02],
+  0x12: [0xD0,0xE0,0x0E],
+  0x13: [0x38,0xE0,0x01],
+  0x14: [0xA0,0xE0,0x0D],
+  0x15: [0x30,0xE0,0x03],
+  0x16: [0xB0,0xE0,0x0E],
+  0x17: [0x90,0xE0,0x0F],
+  0x18: [0x40,0xE0,0x03],
+  0x19: [0x80,0xE0,0x03],
+  0x1A: [0xC8,0xE0,0x0E],
+  0x1B: [0x50,0xE0,0x0F],
+  0x1C: [0xB8,0xE0,0x0D],
+  0x1D: [0x20,0xE0,0x03],
+  0x1E: [0x48,0xE0,0x01],
+  0x1F: [0xB8,0xE0,0x0F]
+}
+
+Path selection
+
+pathId = (rngNext() & 0x0F) + 0x10
+if pathId == lastPathId:
+    pathId += 1
+    if pathId == 0x20: pathId = 0x10
+lastPathId = pathId
+
+Game A state READY_WAITING_TO_LAUNCH
+
+When releaseDelayFrames reaches zero:
+
+1. Select launch path as above.
+2. x = path.startX
+3. y = 0xA8
+4. motionCode = path.initialMotionCode
+5. segmentTimer = path.launchSegmentDuration
+6. pathIndex can point after the segment, but it will not matter after launchFlag clears.
+7. launchFlag = true
+8. flyAwayFlag = false
+9. flyAwayTimer = selected by round
+10. zapperShape = selected by round
+11. speedIndex = selected by round
+12. state = FLYING_AND_SHOOTABLE
+13. currentTargetCount += 1
+
+Game A active flying update
+
+function updateGameADuck(duck):
+    if shotCount == 0 and not duck.flyAwayFlag:
+        duck.flyAwayFlag = true
+        duck.segmentTimer = 0xF0
+        setMotionCode(duck, 0)      // upward
+
+    if duck.launchFlag:
+        if duck.y < 0x88:
+            duck.launchFlag = false
+        else:
+            applyScriptedLaunchMotionThisFrame(duck)
+            return
+
+    if not duck.flyAwayFlag:
+        if frameCounter is odd:
+            duck.flyAwayTimer -= 1
+            if duck.flyAwayTimer == 0:
+                duck.flyAwayFlag = true
+                showFlyAwayMessageIfNoDuckHitThisWave()
+
+    if duck.flyAwayFlag:
+        updateDuckEscapeBoundaryLogic(duck)
+    else:
+        updateDuckNormalBoundaryLogic(duck)
+
+    steps = readSpeedAndAdvance(duck)
+    repeat steps times:
+        applyNextMotionMicroDelta(duck)
+
+    updateDuckAnimationFromMotion(duck)
+
+Normal free-flight bounds
+
+If not in fly-away mode, keep ducks in this box:
+
+y < 0x20:  nudge y += 1 and choose a new downward-safe direction
+y >= 0x90: nudge y -= 1 and choose a new upward-safe direction
+x < 0x10:  nudge x += 1 and choose a new right-safe direction
+x >= 0xF0: nudge x -= 1 and choose a new left-safe direction
+
+After any boundary change, continue moving with the new motion code.
+
+Escape bounds
+
+When flyAwayFlag is true, use escape bounds instead of normal bounds:
+
+if y < 0x08: clear duck
+if x < 0x0C: clear duck
+if x >= 0xF4: clear duck
+if y >= 0x90: nudge upward and choose an upward-safe direction
+otherwise continue movement and allow the duck to leave through the top or sides
+
+Boundary direction selection
+
+For a close recreation, implement this instead of simple vector reflection.
+
+function chooseBoundaryMotion(duck, boundaryType):
+    // boundaryType can be TOP, BOTTOM, LEFT, RIGHT.
+    // This mirrors the original's biased redirection logic.
+
+    if boundaryType == TOP:
+        duck.y += 1
+        boundaryCode = 0
+        sideBase = duck.motionCode & 0x08
+    else if boundaryType == BOTTOM:
+        duck.y -= 1
+        boundaryCode = 2
+        sideBase = duck.motionCode & 0x08
+    else if boundaryType == LEFT:
+        duck.x += 1
+        boundaryCode = 4
+        sideBase = 0
+    else if boundaryType == RIGHT:
+        duck.x -= 1
+        boundaryCode = 2
+        sideBase = 0x08
+
+    base = ((duck.motionCode & 0x07) ^ 0x07) | sideBase
+    r = rngNext() & 0x03
+    if r == 3: r = 2
+    candidate = base + r
+
+    if candidate == 0:
+        if boundaryCode == 2: candidate -= 1
+        else: candidate += 1
+    else if candidate == 4:
+        if boundaryCode == 0: candidate += 1
+        else if boundaryCode == 2: candidate -= 1
+        else: candidate += randomPlusMinusOne()
+    else if candidate == 8:
+        if boundaryCode == 0: candidate += randomPlusMinusOne()
+        else: candidate -= 1
+    else if candidate == 12:
+        if boundaryCode == 0: candidate -= 1
+        else: candidate += 1
+
+    duck.motionCode = candidate & 0x0F
+
+function randomPlusMinusOne():
+    // Original uses bit 7 of rngNext after an ASL.
+    return ((rngNext() & 0x80) != 0) ? +1 : -1
+
+Hit and fall behavior
+
+When hit:
+
+1. state = HIT_MARK_AND_SCORE.
+2. Mark hit table for this target.
+3. currentHitCount += 1.
+4. currentWaveHitCount += 1.
+5. Add score according to color and round.
+6. Enter HIT_PAUSE for 0x12 frames.
+7. Then enter START_FALLING.
+8. In falling, use motion code 16 and fall until y >= 0xB0.
+9. Then clear the duck.
+
+------------------------------------------------------------
+9. GAME B, TWO DUCKS, SINGLE PLAYER ONLY
+------------------------------------------------------------
+
+Wave structure
+
+- Two duck slots are enabled.
+- Three shots are shared by both ducks.
+- First duck launches after releaseDelayFrames = 0x30 frames.
+- Second duck launches after a random delay of 1 to 64 frames after the first duck initializes.
+- The two-duck mode is single player only.
+
+Game B speed by round and duck color
+
+Color order in table: normal, purple/blue, red.
+
+round 1:   0x04, 0x08, 0x0C
+round 2:   0x08, 0x0C, 0x10
+round 3:   0x08, 0x0C, 0x10
+round 4:   0x0C, 0x10, 0x14
+round 5:   0x10, 0x14, 0x18
+round 6:   0x10, 0x14, 0x18
+round 7:   0x14, 0x18, 0x1C
+round 8:   0x14, 0x1C, 0x1C
+round 9:   0x18, 0x1C, 0x1C
+round 10+: 0x1C, 0x1C, 0x20
+
+Path selection
+
+pathId = rngNext() & 0x0F
+if pathId == lastPathId:
+    pathId += 1
+    if pathId == 0x10: pathId = 0x00
+lastPathId = pathId
+
+Game B path format
+
+Each path is:
+
+[startX, duration1, motionCode1, duration2, motionCode2, ..., 0xFF, nextState, extra]
+
+Duration is in movement substeps, not frames. Higher speed cycles consume the same path faster because more substeps are applied per frame.
+
+When segmentTimer reaches 0:
+
+1. Read the next byte.
+2. If it is 0xFF, set state = nextState and stop.
+3. Otherwise, that byte is segmentTimer.
+4. Read the following byte as motionCode.
+5. Continue movement.
+
+Game B path scripts
+
+GAME_B_PATHS = {
+  0:  [0x9C, 0x18,0x14, 0x10,0x01, 0x10,0x02, 0x20,0x03, 0x08,0x02, 0x08,0x01, 0x18,0x00, 0x10,0x0E, 0x08,0x0D, 0x20,0x0C, 0x08,0x0D, 0x08,0x0C, 0xB0,0x0B, 0x80,0x03, 0x40,0x02, 0xFF,0x08,0x00],
+  1:  [0x88, 0x10,0x12, 0x28,0x0F, 0x08,0x00, 0x10,0x01, 0x08,0x02, 0x48,0x03, 0x20,0x04, 0x70,0x0C, 0x30,0x0D, 0x30,0x0E, 0xFF,0x08,0x00],
+  2:  [0x90, 0x20,0x12, 0x60,0x0D, 0x90,0x03, 0x78,0x02, 0xFF,0x08,0x00],
+  3:  [0x78, 0x20,0x13, 0x40,0x0F, 0x10,0x0E, 0x20,0x0D, 0x18,0x0B, 0x20,0x0A, 0x50,0x06, 0x28,0x04, 0x38,0x03, 0x78,0x02, 0xFF,0x08,0x00],
+  4:  [0x80, 0x10,0x12, 0x20,0x0D, 0x08,0x0E, 0x08,0x0F, 0x20,0x03, 0x10,0x02, 0x08,0x0E, 0x20,0x0D, 0x08,0x0E, 0x08,0x0F, 0x08,0x01, 0x08,0x03, 0x30,0x04, 0x40,0x05, 0x80,0x0B, 0x30,0x0E, 0x60,0x0F, 0xFF,0x08,0x00],
+  5:  [0xB8, 0x08,0x14, 0x10,0x04, 0x08,0x03, 0x08,0x02, 0x08,0x01, 0x08,0x00, 0x08,0x0E, 0x08,0x0D, 0x08,0x0C, 0x50,0x0B, 0x60,0x0C, 0x10,0x0D, 0x40,0x02, 0x70,0x01, 0xFF,0x08,0x00],
+  6:  [0x70, 0x18,0x12, 0x40,0x0D, 0x10,0x0F, 0x10,0x02, 0x30,0x04, 0x20,0x05, 0x40,0x03, 0x20,0x04, 0x20,0x03, 0x18,0x02, 0x20,0x01, 0xFF,0x08,0x00],
+  7:  [0xB0, 0x10,0x14, 0x28,0x02, 0x18,0x01, 0x30,0x00, 0x10,0x0F, 0x50,0x0B, 0x60,0x0C, 0x20,0x0B, 0x70,0x04, 0x80,0x05, 0xFF,0x08,0x00],
+  8:  [0x5A, 0x08,0x13, 0x10,0x02, 0x20,0x0D, 0x10,0x03, 0x10,0x04, 0x10,0x03, 0x58,0x0D, 0x28,0x03, 0x48,0x04, 0x10,0x03, 0x48,0x0D, 0x80,0x03, 0xFF,0x08,0x00],
+  9:  [0x46, 0x20,0x12, 0x20,0x0E, 0x38,0x04, 0x18,0x02, 0x10,0x04, 0x20,0x06, 0x08,0x05, 0x18,0x04, 0x18,0x02, 0x40,0x01, 0x40,0x00, 0xFF,0x08,0x00],
+ 10:  [0xD0, 0x2A,0x14, 0x30,0x0C, 0x20,0x0B, 0x20,0x0C, 0x38,0x0B, 0x48,0x0C, 0x40,0x02, 0x30,0x0C, 0xFF,0x08,0x00],
+ 11:  [0x70, 0x10,0x12, 0x10,0x0D, 0x20,0x0E, 0x10,0x0F, 0x10,0x00, 0x30,0x02, 0x10,0x04, 0x10,0x05, 0x60,0x05, 0x20,0x0B, 0x40,0x0C, 0x08,0x0D, 0x70,0x03, 0x30,0x02, 0x18,0x00, 0xFF,0x08,0x00],
+ 12:  [0xC0, 0x18,0x12, 0x10,0x0D, 0x40,0x0B, 0x38,0x0D, 0x08,0x0B, 0x08,0x0C, 0x10,0x0D, 0x70,0x03, 0x40,0x02, 0x40,0x01, 0xFF,0x08,0x00],
+ 13:  [0x90, 0x18,0x14, 0x20,0x02, 0x28,0x0D, 0x20,0x0B, 0x20,0x0B, 0x08,0x0C, 0x10,0x0D, 0x20,0x03, 0x20,0x05, 0x20,0x04, 0x10,0x02, 0x10,0x03, 0x70,0x0D, 0x40,0x04, 0x50,0x03, 0x20,0x02, 0xFF,0x08,0x00],
+ 14:  [0x58, 0x1C,0x14, 0x24,0x02, 0x08,0x00, 0x48,0x0C, 0x38,0x0E, 0x50,0x07, 0x30,0x05, 0x30,0x04, 0x28,0x0D, 0x20,0x02, 0x80,0x01, 0xFF,0x08,0x00],
+ 15:  [0x50, 0x20,0x12, 0x20,0x0D, 0x40,0x03, 0x30,0x0C, 0x40,0x03, 0x30,0x04, 0x38,0x05, 0x08,0x0B, 0x28,0x0C, 0x08,0x0D, 0x40,0x03, 0x4A,0x04, 0xFF,0x08,0x00]
+}
+
+Game B path total substeps
+
+These totals are useful for checking duration. Duration in frames is roughly totalSubsteps divided by average substeps per frame.
+
+path 0:  568
+path 1:  400
+path 2:  392
+path 3:  496
+path 4:  568
+path 5:  448
+path 6:  384
+path 7:  592
+path 8:  520
+path 9:  376
+path 10: 394
+path 11: 560
+path 12: 432
+path 13: 600
+path 14: 576
+path 15: 538
+
+Example: path 0 at speed index 0x04 averages 1.25 substeps/frame, so 568 / 1.25 = 454 frames, about 7.57 seconds. At speed index 0x20, it averages 4.0 substeps/frame, so 568 / 4 = 142 frames, about 2.37 seconds.
+
+------------------------------------------------------------
+10. SHARED DUCK UPDATE PSEUDOCODE
+------------------------------------------------------------
+
+function spawnDuckWave():
+    shotCount = 3
+    currentWaveHitCount = 0
+    releaseDelayFrames = 0x30
+
+    select currentDuckConfiguration as described above
+
+    duckSlot0.active = true
+    duckSlot0.state = INIT
+
+    if mode == GAME_B_TWO_DUCKS:
+        duckSlot1.active = true
+        duckSlot1.state = INIT
+        pendingDuckLaunches = 2
+    else:
+        duckSlot1.active = false
+        duckSlot1.state = IDLE_OR_CLEARED
+        pendingDuckLaunches = 1
+
+function updateDuckModeFrame():
+    handleShotInputIfAny()
+
+    updateDuck(duckSlot0)
+    updateDuck(duckSlot1)
+
+    if pendingDuckLaunches > 0 and releaseDelayFrames > 0:
+        releaseDelayFrames -= 1
+
+    if pendingDuckLaunches == 0 and no duck slot is active or shootable:
+        showDogResultOrRoundEnd()
+
+function updateDuck(duck):
+    switch duck.state:
+        case IDLE_OR_CLEARED:
+            return
+
+        case INIT:
+            initializeDuckDefaults(duck)
+            duck.state = READY_WAITING_TO_LAUNCH
+            return
+
+        case READY_WAITING_TO_LAUNCH:
+            if releaseDelayFrames > 0: return
+            initializeDuckLaunch(duck)
+            pendingDuckLaunches -= 1
+            releaseDelayFrames = (rngNext() & 0x3F) + 1
+            return
+
+        case FLYING_AND_SHOOTABLE:
+            if mode == GAME_A_ONE_DUCK:
+                updateGameADuck(duck)
+            else:
+                updateGameBDuck(duck)
+            return
+
+        case HIT_MARK_AND_SCORE:
+            markHitAndAddScore(duck)
+            duck.hitPauseTimer = 0x12
+            duck.state = HIT_PAUSE
+            return
+
+        case HIT_PAUSE:
+            duck.hitPauseTimer -= 1
+            if duck.hitPauseTimer == 0:
+                duck.state = START_FALLING
+            return
+
+        case START_FALLING:
+            spawnScorePopup(duck)
+            setMotionCode(duck, 16)
+            duck.state = FALLING
+            return
+
+        case FALLING:
+            steps = readSpeedAndAdvance(duck)
+            repeat steps times:
+                applyNextMotionMicroDelta(duck)
+            if duck.y >= 0xB0:
+                duck.state = CLEAR
+            return
+
+        case CLEAR:
+            clearDuckSprites(duck)
+            duck.active = false
+            duck.state = IDLE_OR_CLEARED
+            return
+
+function updateGameBDuck(duck):
+    if shotCount == 0 and not duck.flyAwayFlag:
+        duck.flyAwayFlag = true
+        duck.segmentTimer = 0xF0
+        setMotionCode(duck, 0)
+
+    if duck.segmentTimer == 0:
+        byte = duck.pathData[duck.pathIndex]
+        duck.pathIndex += 1
+
+        if byte == 0xFF:
+            duck.state = duck.pathData[duck.pathIndex]
+            duck.pathIndex += 1
+            duck.extra = duck.pathData[duck.pathIndex]
+            return
+
+        duck.segmentTimer = byte
+        newMotion = duck.pathData[duck.pathIndex]
+        duck.pathIndex += 1
+        setMotionCode(duck, newMotion)
+
+    steps = readSpeedAndAdvance(duck)
+    repeat steps times:
+        if duck.segmentTimer > 0:
+            duck.segmentTimer -= 1
+        applyNextMotionMicroDelta(duck)
+
+    updateDuckAnimationFromMotion(duck)
+
+------------------------------------------------------------
+11. GAME C, CLAY SHOOTING, SINGLE PLAYER ONLY
+------------------------------------------------------------
+
+Wave structure
+
+- Two clay slots are enabled.
+- Three shots are shared by both clays.
+- At the start of each pair, releaseDelayFrames = 0x80.
+- First clay launches when releaseDelayFrames reaches zero.
+- Second clay launches after a random delay of 1 to 64 frames after the first clay initializes.
+- No dog target behavior is needed for clay mode.
+
+ClayState
+
+0 IDLE_OR_CLEARED
+1 INIT
+2 READY_WAITING_TO_LAUNCH
+3 FLYING_AND_SHOOTABLE
+4 HIT_START_FRAGMENTATION
+5 FRAGMENTING
+8 CLEAR
+
+Clay trajectory model
+
+The original clay pigeon uses three 5-byte fixed-point groups. Treat these as internal projectile values, not screen pixels. The screen x and y are projected from these values each frame.
+
+Use entity memory bytes m[0..14] representing original addresses $40..$4E:
+
+Group A, m[0..4], original $40..$44: horizontal-ish component.
+Group B, m[5..9], original $45..$49: distance/depth component.
+Group C, m[10..14], original $4A..$4E: vertical-ish component.
+
+Each group layout:
+
+m[base + 0] = acceleration
+m[base + 1] = velocity low
+m[base + 2] = velocity high
+m[base + 3] = position low
+m[base + 4] = position high
+
+Clay path table
+
+Each launch path has 6 bytes:
+
+[set_$44, set_$43, set_$4A, set_$42, set_$47, set_$4C]
+
+CLAY_PATHS = [
+  [0x00,0x00,0xC0,0x15,0x1E,0x2C],
+  [0x01,0x00,0xC0,0x0A,0x1E,0x30],
+  [0x03,0x00,0xD0,0x10,0x1E,0x25],
+  [0x04,0x00,0xC0,0x00,0x1C,0x30],
+  [0x06,0x00,0xC0,0x0F,0x1C,0x30],
+  [0x08,0x00,0xC0,0xF6,0x1C,0x30],
+  [0x09,0x00,0xC0,0x0C,0x1C,0x30],
+  [0x0A,0x00,0xC0,0xF4,0x1C,0x30],
+  [0x0C,0x00,0xC0,0xF4,0x1E,0x2D],
+  [0x0E,0x00,0xC0,0x08,0x1C,0x30],
+  [0x0A,0x00,0xC0,0x00,0x1D,0x30],
+  [0x11,0x00,0xB8,0xEE,0x20,0x33],
+  [0x13,0x00,0xC8,0xF0,0x1C,0x2A],
+  [0x04,0x80,0xC8,0xF7,0x1C,0x2D],
+  [0x0A,0x80,0xC8,0x0B,0x1C,0x2D],
+  [0x0F,0x80,0xC6,0xF3,0x21,0x26]
+]
+
+Clay path selection
+
+pathId = rngNext() & 0x0F
+if pathId == lastPathId:
+    pathId = (pathId + 1) & 0x0F
+lastPathId = pathId
+
+On clay launch
+
+1. Initialize m[0..14] to zero.
+2. Load selected CLAY_PATHS[pathId].
+3. Apply:
+   m[4]  = path[0]    // $44
+   m[3]  = path[1]    // $43
+   m[10] = path[2]    // $4A
+   m[2]  = path[3]    // $42
+   m[7]  = path[4]    // $47
+   m[12] = path[5]    // $4C
+4. currentTargetCount += 1.
+5. state = FLYING_AND_SHOOTABLE.
+6. Play throw sound if implementing audio.
+
+Clay speed row by round
+
+The clay mode does not use one constant speed per target. It selects a speed-cycle index based on round and distance class.
+
+round 1:   rowOffset = 0x00
+round 2:   rowOffset = 0x08
+round 3:   rowOffset = 0x10
+rounds 4-5: rowOffset = 0x18
+rounds 6-7: rowOffset = 0x20
+rounds 8-9: rowOffset = 0x28
+round 10+: rowOffset = 0x30
+
+CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS = [
+  // row 0, round 1
+  0x14,0x14,0x10,0x10,0x10,0x08,0x04,0x00,
+  // row 1, round 2
+  0x18,0x14,0x14,0x10,0x0C,0x08,0x04,0x00,
+  // row 2, round 3
+  0x1C,0x18,0x18,0x14,0x10,0x0C,0x08,0x04,
+  // row 3, rounds 4-5
+  0x20,0x1C,0x18,0x14,0x10,0x0C,0x08,0x04,
+  // row 4, rounds 6-7
+  0x24,0x20,0x1C,0x18,0x14,0x0C,0x08,0x04,
+  // row 5, rounds 8-9
+  0x28,0x24,0x20,0x1C,0x14,0x10,0x0C,0x08,
+  // row 6, round 10+
+  0x2C,0x28,0x24,0x20,0x18,0x10,0x0C,0x08
+]
+
+Clay distance class
+
+Each frame before movement:
+
+if signed(m[12]) < 0:
+    distanceClass = 7
+else:
+    distanceClass = m[9] >> 2
+    if distanceClass >= 7: distanceClass = 7
+
+If distanceClass changed since the last frame:
+
+speedIndex = CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS[rowOffset + distanceClass]
+lastDistanceClass = distanceClass
+
+Clay fixed-point update
+
+Use unsigned 8-bit math. Values wrap at 0xFF. Signed checks use bit 7.
+
+function signByte(b):
+    return 0xFF if (b & 0x80) else 0x00
+
+function updateClayFixedPoint(m):
+    // Update groups in this order: group C at base 10, group B at base 5, group A at base 0.
+    for base in [10, 5, 0]:
+        acc = m[base + 0]
+        signAcc = signByte(acc)
+
+        // velocity low += acceleration
+        sum1 = acc + m[base + 1]
+        carry1 = sum1 > 0xFF ? 1 : 0
+        m[base + 1] = sum1 & 0xFF
+
+        // velocity high += sign(acceleration) + carry
+        sum2 = signAcc + m[base + 2] + carry1
+        m[base + 2] = sum2 & 0xFF
+        signVelHigh = signByte(m[base + 2])
+
+        // Original doubles velocity low and uses its carry while adding velocity high to position low.
+        carryFromVelLowShift = (m[base + 1] & 0x80) ? 1 : 0
+        m[base + 1] = (m[base + 1] << 1) & 0xFF
+
+        // position low += velocity high + carryFromVelLowShift
+        sum3 = m[base + 2] + m[base + 3] + carryFromVelLowShift
+        carry3 = sum3 > 0xFF ? 1 : 0
+        m[base + 3] = sum3 & 0xFF
+
+        // position high += sign(velocity high) + carry
+        sum4 = signVelHigh + m[base + 4] + carry3
+        m[base + 4] = sum4 & 0xFF
+
+Clay active flying update
+
+function updateClay(clay):
+    if state == READY_WAITING_TO_LAUNCH:
+        if releaseDelayFrames > 0: return
+        initializeClayLaunch(clay)
+        pendingClayLaunches -= 1
+        releaseDelayFrames = (rngNext() & 0x3F) + 1
+        return
+
+    if state == FLYING_AND_SHOOTABLE:
+        updateClayDistanceClassAndSpeedIndex(clay)
+        steps = readSpeedAndAdvance(clay)
+        repeat steps times:
+            updateClayFixedPoint(clay.m)
+
+        if signed(clay.m[14]) < 0:
+            clear clay
+            return
+
+        if clay.m[9] >= 0x30:
+            clear clay
+            return
+
+        projectClayToScreen(clay)
+        updateClayImageAndZapperShape(clay)
+
+Clay projection
+
+For a close clone, port the original projection routine. For a gameplay-feel clone, use this approximation:
+
+z = max(1, clay.m[9])
+rawX = ((clay.m[4] << 8) | clay.m[3])
+rawY = ((clay.m[14] << 8) | clay.m[13])
+
+screenX = 128 + ((signed16(rawX) * 108) / (z + 32))
+screenY = 176 - ((signed16(rawY) * 80) / (z + 32))
+
+Clamp only for rendering. Do not clamp the internal fixed-point trajectory. The original clears the target when m[14] is negative or m[9] >= 0x30.
+
+Clay image index
+
+The original uses distance to pick the clay's apparent size.
+
+CLAY_IMAGE_BY_DISTANCE = [
+  0x18,0x18,0x19,0x1A,0x1A,0x1B,0x1C,0x1D,
+  0x1E,0x1E,0x1F,0x1F,0x20,0x20,0x21,0x21,
+  0x22,0x22,0x22,0x22,0x23,0x23,0x23,0x23
+]
+
+imageIndex = clay.m[9] >> 1
+if imageIndex > 23: imageIndex = 23
+clay.image = CLAY_IMAGE_BY_DISTANCE[imageIndex]
+shapeImageIndex = clay.image - 0x18
+
+Then use the clay shape table from the Zapper section.
+
+Clay approximate visible durations
+
+These are sanity checks from porting the fixed-point update. They do not include the random delay between the first and second clay in a pair.
+
+Round 1:
+min about 271 frames, max about 319 frames, average about 308 frames
+about 4.5 to 5.3 seconds
+
+Round 3:
+min about 219 frames, max about 258 frames, average about 249 frames
+about 3.7 to 4.3 seconds
+
+Round 8:
+min about 176 frames, max about 208 frames, average about 200 frames
+about 2.9 to 3.5 seconds
+
+Round 10+:
+min about 170 frames, max about 200 frames, average about 193 frames
+about 2.8 to 3.3 seconds
+
+Clay hit behavior
+
+When hit:
+
+1. state = HIT_START_FRAGMENTATION.
+2. Mark hit table for this target.
+3. currentHitCount += 1.
+4. currentWaveHitCount += 1.
+5. Add clay score according to round.
+6. Replace target sprite with fragments.
+7. Animate fragments until done.
+8. Spawn score popup.
+9. Clear clay.
+
+Clay score
+
+Rounds 1-5:  1000
+Rounds 6-10: 1500
+Rounds 11+:  2000
+
+------------------------------------------------------------
+12. SHOOTING AND WAVE FLOW
+------------------------------------------------------------
+
+Duck shot handling
+
+function handleShotInDuckMode(pointX, pointY):
+    if shotCount == 0: return
+    shotCount -= 1
+
+    for duck in [duckSlot0, duckSlot1]:
+        if duck.active and duck.state == FLYING_AND_SHOOTABLE:
+            if pointHitsZapperShape(pointX, pointY, duck.x, duck.y, duck.zapperShape):
+                duck.state = HIT_MARK_AND_SCORE
+                currentHitCount += 1
+                currentWaveHitCount += 1
+                return
+
+    // missed shot
+    if shotCount == 0:
+        for duck in active flying ducks:
+            duck.flyAwayFlag = true
+            duck.segmentTimer = 0xF0
+            setMotionCode(duck, 0)
+
+Clay shot handling
+
+function handleShotInClayMode(pointX, pointY):
+    if shotCount == 0: return
+    shotCount -= 1
+
+    for clay in [claySlot0, claySlot1]:
+        if clay.active and clay.state == FLYING_AND_SHOOTABLE:
+            if pointHitsZapperShape(pointX, pointY, clay.x, clay.y, clay.zapperShape):
+                clay.state = HIT_START_FRAGMENTATION
+                currentHitCount += 1
+                currentWaveHitCount += 1
+                return
+
+    // missed shot. Clays keep flying until they leave.
+
+Wave completion
+
+Duck mode:
+
+After all ducks from the wave are cleared, display dog result if you implement the dog. Then:
+
+if currentTargetCount == 10:
+    go to round end
+else:
+    spawnDuckWave()
+
+Clay mode:
+
+After both clays are cleared:
+
+if currentTargetCount == 10:
+    go to round end
+else:
+    spawnClayWave()
+
+------------------------------------------------------------
+13. ACCEPTANCE CHECKS
+------------------------------------------------------------
+
+Use these to check whether your implementation is close.
+
+General
+
+- Round always contains 10 targets.
+- Game A has 1 duck per wave and 3 shots per duck.
+- Game B has 2 ducks per wave and 3 shots total for the pair.
+- Game C has 2 clays per wave and 3 shots total for the pair.
+- The pass line is 6 hits through round 10, then 7, 8, 9, and finally 10 from round 20 onward.
+
+Game A
+
+- Round 1 ducks should feel slow and stay visible a long time, around 11.5 seconds total on average including launch and escape travel.
+- Around round 8, average speed should feel roughly double round 1.
+- Around round 12, average speed should feel roughly triple round 1.
+- Around round 20, ducks should be visible roughly 5 seconds on average.
+- Hitbox remains large through round 23, shrinks at round 24, then shrinks again from round 27 onward.
+- Do not steer with controller input. This implementation is single player only.
+
+Game B
+
+- Two ducks launch with a stagger. First after about 48 frames, second after a random 1 to 64 frame delay.
+- Ducks follow scripted paths, not bouncing free-flight behavior.
+- Path completion speeds up because speed cycles consume more path substeps per frame.
+
+Game C
+
+- Two clays launch with a stagger. Pair start delay is about 128 frames, then second clay uses a random 1 to 64 frame delay.
+- Clays shrink quickly as they move away.
+- Clays are easier to hit when close because they use larger Zapper shapes, then shrink by distance and round bracket.
+- Round 10+ clays should stay visible about 2.8 to 3.3 seconds depending on path.
+
+------------------------------------------------------------
+14. THINGS TO AVOID
+------------------------------------------------------------
+
+Do not implement ducks as physics bodies with random acceleration.
+Do not use one smooth velocity vector per duck.
+Do not give Game A and Game B the same flight behavior.
+Do not implement second-player controller duck movement.
+Do not make hitboxes equal to the visible sprite bounds.
+Do not forget that Game B and Game C use 3 shots total for two targets.
+Do not make the pass line increase every round. It uses the fixed table above.
+Do not clamp clays visually by screen bounds. They clear by internal distance or vertical fixed-point state.
+

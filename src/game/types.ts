@@ -29,6 +29,7 @@ export type HuntConfig = {
 
 export type TargetKind = "bird" | "clay";
 export type TargetStatus = "flying" | "hit" | "escaped";
+export type MechanicsState = "idle" | "init" | "waiting" | "flying" | "hit_pause" | "falling" | "fragmenting" | "clear";
 export type BirdColor = "blue" | "green" | "red";
 
 export type TargetEntity = {
@@ -37,21 +38,42 @@ export type TargetEntity = {
   tweet?: TweetCandidate;
   color: BirdColor;
   status: TargetStatus;
+  mechanicsState?: MechanicsState;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  nesX?: number;
+  nesY?: number;
   radius: number;
   createdAtMs: number;
   hitAtMs?: number;
   escapedAtMs?: number;
   points: number;
   direction: 1 | -1;
-  flight: "side" | "diag" | "up";
+  flight: "side" | "diag";
+  slotIndex?: number;
+  pathId?: number;
+  pathData?: number[];
+  pathIndex?: number;
+  motionCode?: number;
+  motionPatternIndex?: number;
+  speedIndex?: number;
+  segmentTimer?: number;
+  zapperShape?: number;
+  flyAwayFlag?: boolean;
+  flyAwayTimer?: number;
+  launchFlag?: boolean;
+  hitPauseTimer?: number;
+  clayMemory?: number[];
+  distanceClass?: number;
+  clayImageIndex?: number;
+  shootable?: boolean;
   erraticPhase?: number;
   erraticStrength?: number;
   erraticRate?: number;
   fliesBehindTree?: boolean;
+  pingPongEdges?: boolean;
 };
 
 export type HitRecord = {
