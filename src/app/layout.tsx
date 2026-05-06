@@ -3,7 +3,7 @@ import "@fontsource/press-start-2p/400.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "tweet-hunt",
+  title: "Tweet Hunt",
   description: "A retro arcade prototype for reviewing and deleting tweets through gameplay."
 };
 
