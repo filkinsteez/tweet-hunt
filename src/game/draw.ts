@@ -267,7 +267,8 @@ export function drawTarget(
   image: HTMLImageElement,
   target: TargetEntity,
   timeMs: number,
-  flyFrames?: FlyFrameImages | null
+  flyFrames?: FlyFrameImages | null,
+  birdShotImage?: HTMLImageElement | null
 ) {
   if (target.mechanicsState === "waiting" || target.mechanicsState === "clear") return;
 
@@ -277,7 +278,7 @@ export function drawTarget(
   }
 
   if (flyFrames) {
-    drawFlyTarget(ctx, flyFrames, target, timeMs);
+    drawFlyTarget(ctx, flyFrames, target, timeMs, birdShotImage);
     return;
   }
 
@@ -289,16 +290,23 @@ export function drawTarget(
   drawFrame(ctx, image, frameName, drawX, drawY, BIRD_SCALE, flip);
 }
 
-function drawFlyTarget(ctx: CanvasRenderingContext2D, frames: FlyFrameImages, target: TargetEntity, timeMs: number) {
+function drawFlyTarget(
+  ctx: CanvasRenderingContext2D,
+  frames: FlyFrameImages,
+  target: TargetEntity,
+  timeMs: number,
+  birdShotImage?: HTMLImageElement | null
+) {
   const cellWidth = frames.image.naturalWidth / frames.columns;
   const cellHeight = frames.image.naturalHeight / frames.rows;
   const flightRow = flightRowForTarget(target);
+  const hitAgeMs = target.status === "hit" ? timeMs - (target.hitAtMs ?? timeMs) : Number.POSITIVE_INFINITY;
   const frameIndex =
-    target.status === "hit" && timeMs - (target.hitAtMs ?? timeMs) >= HIT_REACTION_DURATION_MS
+    target.status === "hit" && hitAgeMs >= HIT_REACTION_DURATION_MS
       ? 1
       : Math.floor((timeMs / 1000) * FLY_ANIMATION_FPS) % frames.columns;
   const direction = target.direction === -1 ? -1 : 1;
-  const fallAgeMs = target.status === "hit" ? Math.max(timeMs - (target.hitAtMs ?? timeMs) - HIT_REACTION_DURATION_MS, 0) : 0;
+  const fallAgeMs = target.status === "hit" ? Math.max(hitAgeMs - HIT_REACTION_DURATION_MS, 0) : 0;
   const fallRotation = Math.min(fallAgeMs / 500, 1) * direction * 0.8;
   const flightTilt = target.status === "hit" ? fallRotation : Math.max(Math.min(target.vy / 320, 0.25), -0.25);
 
@@ -306,6 +314,18 @@ function drawFlyTarget(ctx: CanvasRenderingContext2D, frames: FlyFrameImages, ta
   ctx.translate(target.x, target.y);
   ctx.scale(direction, 1);
   ctx.rotate(flightTilt);
+  if (target.status === "hit" && hitAgeMs < HIT_REACTION_DURATION_MS && birdShotImage) {
+    ctx.drawImage(
+      birdShotImage,
+      -FLY_SPRITE_SIZE / 2,
+      -FLY_SPRITE_SIZE / 2,
+      FLY_SPRITE_SIZE,
+      FLY_SPRITE_SIZE
+    );
+    ctx.restore();
+    return;
+  }
+
   ctx.drawImage(
     frames.image,
     frameIndex * cellWidth,

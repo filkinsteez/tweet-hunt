@@ -5,6 +5,7 @@ import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
 import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
+import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
 import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
 import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
 import treeAsset from "../../Assets/Sprites/Environment/tree.png";
@@ -670,6 +671,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const flyFramesRef = useRef<FlyFrameImages | null>(null);
+  const birdShotImageRef = useRef<HTMLImageElement | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
@@ -713,6 +715,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       image.onload = null;
       flyFramesRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      birdShotImageRef.current = image;
+    };
+    image.src = birdShotAsset.src;
+
+    return () => {
+      image.onload = null;
+      birdShotImageRef.current = null;
     };
   }, []);
 
@@ -934,13 +949,17 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     drawScoreReveals(ctx, state, timeMs);
 
     for (const target of state.targets) {
-      if (target.status !== "escaped" && target.fliesBehindTree) drawTarget(ctx, image, target, timeMs, flyFramesRef.current);
+      if (target.status !== "escaped" && target.fliesBehindTree) {
+        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
+      }
     }
 
     drawTreeLayer(ctx, treeImageRef.current);
 
     for (const target of state.targets) {
-      if (target.status !== "escaped" && !target.fliesBehindTree) drawTarget(ctx, image, target, timeMs, flyFramesRef.current);
+      if (target.status !== "escaped" && !target.fliesBehindTree) {
+        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
+      }
     }
 
     if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
