@@ -29,6 +29,7 @@ const DOG_ONE_BIRD_WIDTH = 132;
 const DOG_TWO_BIRD_WIDTH = 168;
 const DOG_ONE_BIRD_Y = CANVAS_HEIGHT - 365;
 const DOG_TWO_BIRD_Y = CANVAS_HEIGHT - 365;
+const DOG_RETRIEVE_Y_NUDGE = 7;
 const INTRO_JUMP_Y_OFFSETS = [
   -45,
   -82,
@@ -200,7 +201,7 @@ function drawOneBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, 
   const height = (image.naturalHeight / image.naturalWidth) * width;
   const drawX = centerX === undefined ? CANVAS_WIDTH / 2 - width / 2 : centerX - width / 2;
 
-  ctx.drawImage(image, drawX, DOG_ONE_BIRD_Y + yOffset, width, height);
+  ctx.drawImage(image, drawX, DOG_ONE_BIRD_Y - DOG_RETRIEVE_Y_NUDGE + yOffset, width, height);
 }
 
 function drawTwoBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, yOffset = 0, centerX?: number) {
@@ -208,7 +209,7 @@ function drawTwoBirdDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, 
   const height = (image.naturalHeight / image.naturalWidth) * width;
   const drawX = centerX === undefined ? CANVAS_WIDTH / 2 - width / 2 : centerX - width / 2;
 
-  ctx.drawImage(image, drawX, DOG_TWO_BIRD_Y + yOffset, width, height);
+  ctx.drawImage(image, drawX, DOG_TWO_BIRD_Y - DOG_RETRIEVE_Y_NUDGE + yOffset, width, height);
 }
 
 export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, elapsedMs: number, timeMs: number) {

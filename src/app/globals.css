@@ -105,12 +105,13 @@ button {
   position: absolute;
   left: -5%;
   top: 40%;
-  width: 23px;
-  height: 17px;
+  width: clamp(14px, 4.4%, 27px);
+  aspect-ratio: 8 / 6;
+  height: auto;
   background: url("../../Assets/Sprites/UI/UI_title_selection.jpg") 0 0 / 100% 100% no-repeat;
   image-rendering: pixelated;
   opacity: 0;
-  transform: translateY(-50%) scale(1.2);
+  transform: translateY(-50%);
   transform-origin: left center;
   pointer-events: none;
 }
