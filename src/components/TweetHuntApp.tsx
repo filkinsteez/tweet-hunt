@@ -75,14 +75,20 @@ export function TweetHuntApp() {
   }
 
   return (
-    <main className="shell">
-      {stage === "review" && lastResult ? (
-        <RoundReview
-          result={lastResult}
-          onNextRound={nextRound}
-          onChangeGame={() => setStage("title")}
-        />
-      ) : null}
+    <main className="game-shell">
+      <div className="game-stage">
+        <div className="canvas-wrap crt-cabinet review-crt" style={crtStyle}>
+          <div className="crt-screen">
+            {stage === "review" && lastResult ? (
+              <RoundReview
+                result={lastResult}
+                onNextRound={nextRound}
+                onChangeGame={() => setStage("title")}
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

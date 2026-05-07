@@ -330,6 +330,133 @@ button {
   text-align: center;
 }
 
+.review-crt .crt-screen {
+  display: flex;
+}
+
+.review-crt .crt-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, rgba(255, 255, 255, 0.03) 1px 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.08) 0 1px, rgba(35, 255, 120, 0.06) 1px 2px, rgba(70, 120, 255, 0.08) 2px 3px);
+  opacity: 0.45;
+  mix-blend-mode: multiply;
+}
+
+.review-screen {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: clamp(16px, 3.5%, 26px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(47, 74, 104, 0.85), rgba(5, 8, 20, 0.94) 62%),
+    #050712;
+  color: #fff9e8;
+  font-family: var(--tweet-font);
+  text-shadow: 2px 2px 0 #000;
+}
+
+.review-header {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.review-header h2 {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(14px, 2.5vw, 22px);
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.review-carousel {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+}
+
+.carousel-arrow {
+  height: min(180px, 70%);
+  border: 3px solid #fff0ba;
+  border-radius: 10px;
+  background: rgba(8, 8, 12, 0.82);
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.carousel-arrow:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.carousel-tweet,
+.carousel-empty {
+  min-height: 100%;
+  border: 3px solid #fff0ba;
+  border-radius: 14px;
+  background: rgba(10, 10, 16, 0.82);
+  padding: clamp(14px, 3.2%, 22px);
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  box-shadow: inset 0 0 26px rgba(255, 223, 93, 0.08);
+}
+
+.carousel-tweet.spared {
+  border-color: var(--good);
+  opacity: 0.78;
+}
+
+.carousel-tweet blockquote {
+  margin: 0;
+  color: #fff9e8;
+  font-size: clamp(13px, 2vw, 18px);
+  line-height: 1.65;
+}
+
+.carousel-empty h3,
+.carousel-empty p {
+  margin: 0;
+}
+
+.review-footer {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.review-footer .button-row {
+  gap: 8px;
+}
+
+.review-screen button {
+  padding: 9px 11px;
+  font-size: 10px;
+}
+
+.review-screen .carousel-arrow {
+  font-size: 28px;
+}
+
+.review-screen .notice {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
 .side-panel {
   display: grid;
   gap: 14px;
