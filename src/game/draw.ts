@@ -30,6 +30,19 @@ const DOG_TWO_BIRD_WIDTH = 168;
 const DOG_ONE_BIRD_Y = CANVAS_HEIGHT - 365;
 const DOG_TWO_BIRD_Y = CANVAS_HEIGHT - 365;
 const DOG_RETRIEVE_Y_NUDGE = 7;
+const CLAY_ENV_FRAME = { x: 512, y: 0, width: 256, height: 240 };
+const CLAY_HUD_TOP_Y = CANVAS_HEIGHT - 132;
+const CLAY_SPRITE_SCALE = CANVAS_WIDTH / 256;
+const CLAY_TARGET_FRAMES = [
+  { x: 4, y: 4, width: 24, height: 16 },
+  { x: 32, y: 12, width: 16, height: 8 },
+  { x: 52, y: 12, width: 16, height: 8 },
+  { x: 72, y: 12, width: 8, height: 8 },
+  { x: 84, y: 12, width: 8, height: 8 },
+  { x: 96, y: 12, width: 8, height: 8 },
+  { x: 108, y: 12, width: 8, height: 8 },
+  { x: 120, y: 12, width: 8, height: 8 }
+] satisfies Array<{ x: number; y: number; width: number; height: number }>;
 const INTRO_JUMP_Y_OFFSETS = [
   -45,
   -82,
@@ -59,6 +72,28 @@ const INTRO_JUMP_Y_OFFSETS = [
 export function clearScene(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {
   ctx.imageSmoothingEnabled = false;
   drawBackground(ctx, backgroundImage);
+}
+
+export function drawClayEnvironment(ctx: CanvasRenderingContext2D, envAtlasImage?: HTMLImageElement | null) {
+  ctx.imageSmoothingEnabled = false;
+  if (!envAtlasImage) {
+    drawBackground(ctx);
+    return;
+  }
+
+  ctx.drawImage(
+    envAtlasImage,
+    CLAY_ENV_FRAME.x,
+    CLAY_ENV_FRAME.y,
+    CLAY_ENV_FRAME.width,
+    CLAY_ENV_FRAME.height,
+    0,
+    0,
+    CANVAS_WIDTH,
+    CANVAS_HEIGHT
+  );
+  ctx.fillStyle = "#050508";
+  ctx.fillRect(0, CLAY_HUD_TOP_Y, CANVAS_WIDTH, CANVAS_HEIGHT - CLAY_HUD_TOP_Y);
 }
 
 export function drawBackground(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {
@@ -268,12 +303,13 @@ export function drawTarget(
   target: TargetEntity,
   timeMs: number,
   flyFrames?: FlyFrameImages | null,
-  birdShotImage?: HTMLImageElement | null
+  birdShotImage?: HTMLImageElement | null,
+  clayTargetAtlas?: CanvasImageSource | null
 ) {
   if (target.mechanicsState === "waiting" || target.mechanicsState === "clear") return;
 
   if (target.kind === "clay") {
-    drawClay(ctx, target);
+    drawClay(ctx, target, timeMs, clayTargetAtlas);
     return;
   }
 
@@ -348,7 +384,12 @@ function flightRowForTarget(target: TargetEntity) {
   return 0;
 }
 
-function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity) {
+function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas?: CanvasImageSource | null) {
+  if (clayTargetAtlas) {
+    drawAtlasClay(ctx, target, timeMs, clayTargetAtlas);
+    return;
+  }
+
   const shrink = Math.max(0.35, 1 - (target.clayImageIndex ?? 0) / 34);
   const width = 34 * shrink;
   const height = 12 * shrink;
@@ -369,6 +410,49 @@ function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity) {
     ctx.fillRect(12 * shrink, 16 * shrink, 16 * shrink, 13 * shrink);
   }
   ctx.restore();
+}
+
+function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas: CanvasImageSource) {
+  const imageIndex = Math.min(Math.max(target.clayImageIndex ?? 0, 0), 11);
+  const frameIndex = Math.min(Math.floor((imageIndex / 11) * (CLAY_TARGET_FRAMES.length - 1)), CLAY_TARGET_FRAMES.length - 1);
+  const frame = CLAY_TARGET_FRAMES[frameIndex];
+  const width = frame.width * CLAY_SPRITE_SCALE;
+  const height = frame.height * CLAY_SPRITE_SCALE;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(target.x, target.y);
+
+  if (target.status === "hit") {
+    drawClayFragments(ctx, clayTargetAtlas, timeMs);
+    ctx.restore();
+    return;
+  }
+
+  ctx.rotate((target.x + target.y) / 90);
+  ctx.drawImage(clayTargetAtlas, frame.x, frame.y, frame.width, frame.height, -width / 2, -height / 2, width, height);
+  ctx.restore();
+}
+
+function drawClayFragments(ctx: CanvasRenderingContext2D, clayTargetAtlas: CanvasImageSource, timeMs: number) {
+  const tinyFrame = CLAY_TARGET_FRAMES[CLAY_TARGET_FRAMES.length - 1];
+  const smallFrame = CLAY_TARGET_FRAMES[CLAY_TARGET_FRAMES.length - 3];
+  const wobble = Math.floor((timeMs / 80) % 2) * 2;
+  const pieces = [
+    { frame: tinyFrame, x: -20 - wobble, y: -12, rotation: -0.45 },
+    { frame: smallFrame, x: 9 + wobble, y: -8, rotation: 0.35 },
+    { frame: tinyFrame, x: -5, y: 12 + wobble, rotation: 0.15 }
+  ];
+
+  for (const piece of pieces) {
+    const width = piece.frame.width * CLAY_SPRITE_SCALE;
+    const height = piece.frame.height * CLAY_SPRITE_SCALE;
+    ctx.save();
+    ctx.translate(piece.x, piece.y);
+    ctx.rotate(piece.rotation);
+    ctx.drawImage(clayTargetAtlas, piece.frame.x, piece.frame.y, piece.frame.width, piece.frame.height, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  }
 }
 
 export function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number) {

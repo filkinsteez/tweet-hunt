@@ -198,9 +198,10 @@ export function gameBDuckSpeedIndex(roundNumber: number, color: BirdColor) {
 }
 
 export function flyAwayTimerForRound(roundNumber: number) {
-  if (roundNumber <= 10) return 0x7d;
-  if (roundNumber <= 19) return 0x5d;
-  return 0x3e;
+  const extraScreenTimeFrames = 18;
+  if (roundNumber <= 10) return 0x7d + extraScreenTimeFrames;
+  if (roundNumber <= 19) return 0x5d + extraScreenTimeFrames;
+  return 0x3e + extraScreenTimeFrames;
 }
 
 export function duckZapperShapeForRound(roundNumber: number) {

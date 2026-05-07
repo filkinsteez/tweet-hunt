@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import crtAsset from "../../Assets/CRT/crt_edited.png";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
+import envAtlasAsset from "../../Assets/Sprites/Environment/env_atlas.png";
 import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
+import clayTargetAtlasAsset from "../../Assets/Sprites/Clay/clay_target_atlas.png";
 import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
 import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
 import treeAsset from "../../Assets/Sprites/Environment/tree.png";
@@ -36,6 +39,8 @@ import {
 } from "@/game/constants";
 import {
   CLAY_PATHS,
+  CLAY_IMAGE_BY_DISTANCE,
+  CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS,
   FIXED_STEP_MS,
   GAME_A_LAUNCH_PATHS,
   GAME_B_PATHS,
@@ -71,8 +76,10 @@ import {
   updateClayFixedPoint,
   type RngState
 } from "@/game/duckHuntMechanics";
+import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import {
   clearScene,
+  drawClayEnvironment,
   drawCrosshair,
   drawDog,
   drawForeground,
@@ -199,6 +206,26 @@ function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
+function createTransparentCanvas(image: HTMLImageElement, transparentColor: [number, number, number]) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return image;
+
+  ctx.drawImage(image, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const [r, g, b] = transparentColor;
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    if (imageData.data[index] === r && imageData.data[index + 1] === g && imageData.data[index + 2] === b) {
+      imageData.data[index + 3] = 0;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
 function drawUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number) {
   ctx.drawImage(image, x, y, image.naturalWidth * UI_SCALE, image.naturalHeight * UI_SCALE);
 }
@@ -297,7 +324,7 @@ function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, ti
   if (state.scoreReveals.length === 0) return;
 
   ctx.save();
-  ctx.font = "16px 'Nintendo NES Font', 'Press Start 2P', monospace";
+  ctx.font = "16px 'Press Start 2P', monospace";
   ctx.textAlign = "center";
   ctx.fillStyle = "#fff8d7";
 
@@ -348,14 +375,16 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
     const pathId = rngNext(state.rng) % CLAY_PATHS.length;
     const memory = initializeClayMemory(CLAY_PATHS[pathId]);
     const projection = projectClay(memory);
+    const distanceImageIndex = clayImageIndex(memory);
+    const claySpriteIndex = CLAY_IMAGE_BY_DISTANCE[distanceImageIndex] - 0x18;
     target.pathId = pathId;
     target.clayMemory = memory;
     target.nesX = projection.x;
     target.nesY = projection.y;
     target.distanceClass = clayDistanceClass(memory);
-    target.clayImageIndex = clayImageIndex(memory);
-    target.speedIndex = clayRowOffset(state.roundNumber) + (target.distanceClass ?? 0);
-    target.zapperShape = clayZapperShape(state.roundNumber, target.clayImageIndex ?? 0);
+    target.clayImageIndex = claySpriteIndex;
+    target.speedIndex = CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS[clayRowOffset(state.roundNumber) + (target.distanceClass ?? 0)];
+    target.zapperShape = clayZapperShape(state.roundNumber, claySpriteIndex);
     target.direction = target.slotIndex === 0 ? -1 : 1;
     syncCanvasPosition(target);
     return;
@@ -608,14 +637,15 @@ function updateClayTarget(state: RuntimeState, target: TargetEntity) {
 
   const distanceClass = clayDistanceClass(memory);
   target.distanceClass = distanceClass;
-  target.speedIndex = clayRowOffset(state.roundNumber) + distanceClass;
+  target.speedIndex = CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS[clayRowOffset(state.roundNumber) + distanceClass];
   const steps = readSpeedAndAdvance(target);
   for (let step = 0; step < steps; step += 1) updateClayFixedPoint(memory);
 
   const projection = projectClay(memory);
   target.nesX = projection.x;
   target.nesY = projection.y;
-  target.clayImageIndex = clayImageIndex(memory);
+  const distanceImageIndex = clayImageIndex(memory);
+  target.clayImageIndex = CLAY_IMAGE_BY_DISTANCE[distanceImageIndex] - 0x18;
   target.zapperShape = clayZapperShape(state.roundNumber, target.clayImageIndex);
   syncCanvasPosition(target);
 
@@ -669,11 +699,15 @@ function isTargetUnresolved(target: TargetEntity) {
 
 export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const crtRendererRef = useRef<CrtRenderer | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const flyFramesRef = useRef<FlyFrameImages | null>(null);
   const birdShotImageRef = useRef<HTMLImageElement | null>(null);
+  const clayTargetAtlasRef = useRef<CanvasImageSource | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const envAtlasImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
   const dogTwoBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
@@ -686,7 +720,49 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
   const [assetReady, setAssetReady] = useState(false);
+  const [fontReady, setFontReady] = useState(false);
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
+  const [crtUnavailable, setCrtUnavailable] = useState(false);
+
+  useEffect(() => {
+    const canvas = crtCanvasRef.current;
+    if (!canvas) return undefined;
+
+    try {
+      const renderer = new CrtRenderer(canvas);
+      crtRendererRef.current = renderer;
+      setCrtUnavailable(false);
+      return () => {
+        renderer.dispose();
+        if (crtRendererRef.current === renderer) crtRendererRef.current = null;
+      };
+    } catch (error) {
+      console.warn("CRT renderer unavailable; falling back to the source canvas.", error);
+      setCrtUnavailable(true);
+      return undefined;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!("fonts" in document)) {
+      setFontReady(true);
+      return undefined;
+    }
+
+    document.fonts
+      .load("16px 'Press Start 2P'")
+      .then(() => document.fonts.ready)
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setFontReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     onRoundEndRef.current = onRoundEnd;
@@ -732,6 +808,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      clayTargetAtlasRef.current = createTransparentCanvas(image, [254, 211, 186]);
+    };
+    image.src = clayTargetAtlasAsset.src;
+
+    return () => {
+      image.onload = null;
+      clayTargetAtlasRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const assets: Array<[UiImageKey, string]> = [
       ["shots", shotsAsset.src],
       ["hit", ducksHitAsset.src],
@@ -767,6 +856,19 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       backgroundImage.onload = null;
       backgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const envAtlasImage = new Image();
+    envAtlasImage.src = envAtlasAsset.src;
+    envAtlasImage.onload = () => {
+      envAtlasImageRef.current = envAtlasImage;
+    };
+
+    return () => {
+      envAtlasImage.onload = null;
+      envAtlasImageRef.current = null;
     };
   }, []);
 
@@ -836,17 +938,22 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!assetReady) return undefined;
+    if (!assetReady || !fontReady) return undefined;
     const now = performance.now();
     const state = createInitialState(mode, roundNumber);
-    state.phase = "intro";
-    state.phaseStartedAtMs = now;
+    if (mode === "C") {
+      startNextVolley(state, tweetsRef.current, now);
+      state.releaseDelayFrames = 0;
+    } else {
+      state.phase = "intro";
+      state.phaseStartedAtMs = now;
+    }
     stateRef.current = state;
 
     return () => {
       stateRef.current = null;
     };
-  }, [assetReady, mode, roundNumber]);
+  }, [assetReady, fontReady, mode, roundNumber]);
 
   const draw = useCallback((timeMs: number) => {
     const canvas = canvasRef.current;
@@ -858,8 +965,13 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const isClayMode = state.mode === "C";
 
-    clearScene(ctx, backgroundImageRef.current);
+    if (isClayMode) {
+      drawClayEnvironment(ctx, envAtlasImageRef.current);
+    } else {
+      clearScene(ctx, backgroundImageRef.current);
+    }
 
     if (state.phase === "intro" && timeMs - state.phaseStartedAtMs >= ROUND_INTRO_DURATION_MS) {
       startNextVolley(state, tweetsRef.current, timeMs);
@@ -876,7 +988,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
 
     let resolveDogState: "laugh" | "one" | "two" | null = null;
-    if (state.phase === "resolve") {
+    if (state.phase === "resolve" && state.mode !== "C") {
       resolveDogState = "laugh";
       if (state.lastVolleyHitCount === 0) resolveDogState = "laugh";
       else if (state.lastVolleyHitCount === 1) resolveDogState = "one";
@@ -946,23 +1058,23 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       }
     }
 
-    drawScoreReveals(ctx, state, timeMs);
+    if (!isClayMode) {
+      for (const target of state.targets) {
+        if (target.status !== "escaped" && target.fliesBehindTree) {
+          drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
+        }
+      }
+
+      drawTreeLayer(ctx, treeImageRef.current);
+    }
 
     for (const target of state.targets) {
-      if (target.status !== "escaped" && target.fliesBehindTree) {
-        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
+      if (target.status !== "escaped" && (isClayMode || !target.fliesBehindTree)) {
+        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current, clayTargetAtlasRef.current);
       }
     }
 
-    drawTreeLayer(ctx, treeImageRef.current);
-
-    for (const target of state.targets) {
-      if (target.status !== "escaped" && !target.fliesBehindTree) {
-        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
-      }
-    }
-
-    if ((shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
+    if (!isClayMode && (shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
       drawDog(
         ctx,
         image,
@@ -974,18 +1086,22 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         mode === "B" ? dogTwoBirdImageRef.current : null
       );
     }
-    if (introDogBehindGrass) {
+    if (!isClayMode && introDogBehindGrass) {
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
     }
 
-    drawMidground(ctx, midgroundImageRef.current);
-    drawForeground(ctx, foregroundImageRef.current);
+    if (!isClayMode) {
+      drawMidground(ctx, midgroundImageRef.current);
+      drawForeground(ctx, foregroundImageRef.current);
+    }
 
-    if (state.phase === "intro" && !introDogBehindGrass) {
+    if (!isClayMode && state.phase === "intro" && !introDogBehindGrass) {
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
     }
+    drawScoreReveals(ctx, state, timeMs);
     if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
     drawSpriteHud(ctx, state, uiImagesRef.current);
+    crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
       setMicroReveal(null);
@@ -996,7 +1112,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!assetReady) return undefined;
+    if (!assetReady || !fontReady) return undefined;
 
     const tick = (timeMs: number) => {
       draw(timeMs);
@@ -1007,23 +1123,28 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [assetReady, draw]);
+  }, [assetReady, fontReady, draw]);
 
-  function resolveCanvasPosition(event: React.MouseEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
+  function resolveCanvasPosition(event: React.MouseEvent<HTMLElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const displayX = (event.clientX - rect.left) / rect.width;
+    const displayY = (event.clientY - rect.top) / rect.height;
+    const sourceUv =
+      !crtUnavailable && event.currentTarget === crtCanvasRef.current
+        ? mapCrtDisplayUvToSource(displayX, displayY)
+        : { x: displayX, y: displayY };
+
     return {
-      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      x: sourceUv.x * CANVAS_WIDTH,
+      y: sourceUv.y * CANVAS_HEIGHT
     };
   }
 
-  function handleMouseMove(event: React.MouseEvent<HTMLCanvasElement>) {
+  function handleMouseMove(event: React.MouseEvent<HTMLElement>) {
     mouseRef.current = resolveCanvasPosition(event);
   }
 
-  function handleShot(event: React.MouseEvent<HTMLCanvasElement>) {
+  function handleShot(event: React.MouseEvent<HTMLElement>) {
     const state = stateRef.current;
     if (!state || state.phase !== "active" || state.shotsRemaining <= 0) return;
 
@@ -1084,23 +1205,56 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
   }
 
+  const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
+
   return (
-    <div className="canvas-wrap" aria-label={`${modeLabel(mode)} playfield`}>
-      <canvas
-        ref={canvasRef}
-        className="game-canvas"
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        onMouseMove={handleMouseMove}
-        onClick={handleShot}
-      />
-      {microReveal ? (
-        <div className="hud-overlay" aria-hidden="true">
-          <div className="micro-reveal">
-            <p>{microReveal.text}</p>
+    <div
+      className={`canvas-wrap crt-cabinet${crtUnavailable ? " crt-fallback" : ""}`}
+      style={crtStyle}
+      aria-label={`${modeLabel(mode)} playfield`}
+    >
+      <div className="crt-screen">
+        <canvas
+          ref={canvasRef}
+          className="game-canvas game-source-canvas"
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          onMouseMove={handleMouseMove}
+          onClick={handleShot}
+        />
+        <canvas
+          ref={crtCanvasRef}
+          className="game-canvas game-crt-canvas"
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          onMouseMove={handleMouseMove}
+          onClick={handleShot}
+          aria-hidden={crtUnavailable}
+        />
+        {microReveal ? (
+          <div className="hud-overlay" aria-hidden="true">
+            <div className="micro-reveal">
+              <p>{microReveal.text}</p>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function mapCrtDisplayUvToSource(x: number, y: number) {
+  const centeredX = x * 2 - 1;
+  const centeredY = y * 2 - 1;
+  const warpedX = centeredX * (1 + centeredY * centeredY * CRT_WARP_X);
+  const warpedY = centeredY * (1 + centeredX * centeredX * CRT_WARP_Y);
+
+  return {
+    x: clamp01(warpedX * 0.5 + 0.5),
+    y: clamp01(warpedY * 0.5 + 0.5)
+  };
+}
+
+function clamp01(value: number) {
+  return Math.min(Math.max(value, 0), 1);
 }

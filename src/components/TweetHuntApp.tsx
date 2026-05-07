@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
+import crtAsset from "../../Assets/CRT/crt_edited.png";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
 import { GameCanvas } from "./GameCanvas";
 import { RoundReview } from "./RoundReview";
@@ -34,6 +35,35 @@ export function TweetHuntApp() {
     setStage("play");
   }
 
+  const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
+
+  if (stage === "title") {
+    return (
+      <main className="game-shell">
+        <div className="game-stage">
+          <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
+            <div className="crt-screen">
+              <section className="title-screen" aria-label="tweet-hunt title screen">
+                <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
+                <div className="title-options" aria-label="Choose a game mode">
+                  <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
+                    Game A
+                  </button>
+                  <button className="title-option title-option-b" type="button" onClick={() => selectTitleMode("B")}>
+                    Game B
+                  </button>
+                  <button className="title-option title-option-c" type="button" onClick={() => selectTitleMode("C")}>
+                    Game C
+                  </button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (stage === "play") {
     return (
       <main className="game-shell">
@@ -46,23 +76,6 @@ export function TweetHuntApp() {
 
   return (
     <main className="shell">
-      {stage === "title" ? (
-        <section className="title-screen" aria-label="tweet-hunt title screen">
-          <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
-          <div className="title-options" aria-label="Choose a game mode">
-            <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
-              Game A
-            </button>
-            <button className="title-option title-option-b" type="button" onClick={() => selectTitleMode("B")}>
-              Game B
-            </button>
-            <button className="title-option title-option-c" type="button" onClick={() => selectTitleMode("C")}>
-              Game C
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       {stage === "review" && lastResult ? (
         <RoundReview
           result={lastResult}
