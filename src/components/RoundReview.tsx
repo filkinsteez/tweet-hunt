@@ -53,10 +53,12 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
         <h2>{destructiveHits.length > 0 ? `Deleted tweets ${currentIndex + 1}/${destructiveHits.length}` : "No tweets deleted"}</h2>
       </header>
 
-      <div className="review-carousel">
-        <button className="carousel-arrow" type="button" onClick={showPreviousTweet} disabled={destructiveHits.length <= 1} aria-label="Previous bagged tweet">
-          &lt;
-        </button>
+      <div className={`review-carousel${destructiveHits.length === 0 ? " review-carousel-empty" : ""}`}>
+        {destructiveHits.length > 0 ? (
+          <button className="carousel-arrow" type="button" onClick={showPreviousTweet} disabled={destructiveHits.length <= 1} aria-label="Previous bagged tweet">
+            &lt;
+          </button>
+        ) : null}
 
         {currentHit && currentTweet ? (
           <article className="carousel-tweet">
@@ -66,25 +68,28 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
               <span>{currentTweet.likes} likes</span>
               <span>{currentTweet.reposts} reposts</span>
               <span>{currentTweet.replies} replies</span>
-              <span>{currentTweet.sourceLabel}</span>
+              {currentHit.deleteStatus ? <span>{currentHit.deleteStatus}</span> : null}
             </div>
           </article>
         ) : (
           <div className="carousel-empty">
-            <h3>No tweets deleted</h3>
             <p>{result.mode === "C" ? "Game C is practice only. No tweets are deleted." : "No tweet targets were hit this round."}</p>
           </div>
         )}
 
-        <button className="carousel-arrow" type="button" onClick={showNextTweet} disabled={destructiveHits.length <= 1} aria-label="Next bagged tweet">
-          &gt;
-        </button>
+        {destructiveHits.length > 0 ? (
+          <button className="carousel-arrow" type="button" onClick={showNextTweet} disabled={destructiveHits.length <= 1} aria-label="Next bagged tweet">
+            &gt;
+          </button>
+        ) : null}
       </div>
 
       <div className="review-footer">
         <div className="button-row">
-          {result.passed ? <button className="primary" type="button" onClick={onNextRound}>Next round</button> : null}
-          <button className="secondary" type="button" onClick={onChangeGame}>Change game</button>
+          <button className="secondary" type="button" onClick={onChangeGame}>Quit</button>
+          {result.passed || destructiveHits.length === 0 ? (
+            <button className="primary" type="button" onClick={onNextRound}>Next round</button>
+          ) : null}
         </div>
       </div>
     </section>

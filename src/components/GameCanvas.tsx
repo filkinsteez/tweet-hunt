@@ -149,6 +149,20 @@ type Props = {
 const COLORS: BirdColor[] = ["blue", "green", "red"];
 const UI_SCALE = 4;
 
+async function deleteTweetOnHit(tweetId: string, mode: GameMode) {
+  if (mode === "C") return false;
+
+  const response = await fetch("/api/tweets/delete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ tweetId, mode })
+  });
+
+  return response.ok;
+}
+
 type UiImageKey = "shots" | "hit" | "hitAtlas" | "round" | "roundAtlas" | "score" | "scoreAtlas";
 
 const FOREGROUND_GRASS_TOP_Y = 520;
@@ -1182,14 +1196,18 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       points: hit.points,
       hitOrder: state.hits.length + 1,
       hitAtMs: now,
-      mode: state.mode
+      mode: state.mode,
+      deleteStatus: hit.tweet && state.mode !== "C" ? "pending" : undefined
     };
     state.hits.push(record);
 
     if (hit.tweet) {
+      void deleteTweetOnHit(hit.tweet.id, state.mode).then((deleted) => {
+        record.deleteStatus = deleted ? "deleted" : "failed";
+      });
       setMicroReveal({
         id: `${hit.id}_${now}`,
-        text: truncate(hit.tweet.text, 140),
+        text: `Deleting: ${truncate(hit.tweet.text, 128)}`,
         date: formatDate(hit.tweet.createdAt),
         points: hit.points,
         expiresAt: now + 3400

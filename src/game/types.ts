@@ -83,6 +83,7 @@ export type HitRecord = {
   hitOrder: number;
   hitAtMs: number;
   mode: GameMode;
+  deleteStatus?: "pending" | "deleted" | "failed";
 };
 
 export type EscapeRecord = {

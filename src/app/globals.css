@@ -4,13 +4,14 @@
   --panel-2: #2a2a34;
   --ink: #f6f0df;
   --muted: #b9ad9a;
-  --accent: #ffdf5d;
+  --accent: #e79a1b;
   --danger: #ff5c51;
   --good: #70e27b;
   --sky: #63c8ff;
   --grass: #2bb44a;
   --stroke: #08080c;
   --tweet-font: "Press Start 2P", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --ui-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -49,13 +50,19 @@ button {
   min-height: 100dvh;
   padding: clamp(8px, 2vmin, 16px);
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: clamp(10px, 2vmin, 18px);
 }
 
 .game-stage {
   position: relative;
   width: min(1120px, calc(100vw - 32px), calc((100dvh - 40px) * 4 / 3));
+}
+
+.game-shell-with-banner .game-stage {
+  width: min(1120px, calc(100vw - 32px), calc((100dvh - 200px) * 4 / 3));
 }
 
 .muted {
@@ -83,19 +90,6 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-.title-crt .crt-screen::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, rgba(255, 255, 255, 0.035) 1px 2px, transparent 2px 4px),
-    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.10) 0 1px, rgba(35, 255, 120, 0.08) 1px 2px, rgba(70, 120, 255, 0.10) 2px 3px);
-  opacity: 0.55;
-  mix-blend-mode: multiply;
 }
 
 .title-crt .title-screen {
@@ -253,13 +247,26 @@ button {
   overflow: hidden;
   background: #02030a;
   border-radius: 6% / 6%;
+  isolation: isolate;
+}
+
+.crt-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, rgba(255, 255, 255, 0.035) 1px 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.10) 0 1px, rgba(35, 255, 120, 0.08) 1px 2px, rgba(70, 120, 255, 0.10) 2px 3px);
+  opacity: 0.42;
 }
 
 .crt-screen::after {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 21;
   pointer-events: none;
   background:
     radial-gradient(ellipse at 50% 42%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 35%, rgba(0, 0, 0, 0.16) 78%, rgba(0, 0, 0, 0.38) 100%),
@@ -315,7 +322,7 @@ button {
   top: 18px;
   width: min(660px, calc(100% - 28px));
   background: rgba(10, 10, 14, 0.88);
-  border: 3px solid #fff0ba;
+  border: 3px solid var(--accent);
   border-radius: 12px;
   padding: 12px;
   transform: translateX(-50%);
@@ -332,19 +339,6 @@ button {
 
 .review-crt .crt-screen {
   display: flex;
-}
-
-.review-crt .crt-screen::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, rgba(255, 255, 255, 0.03) 1px 2px, transparent 2px 4px),
-    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.08) 0 1px, rgba(35, 255, 120, 0.06) 1px 2px, rgba(70, 120, 255, 0.08) 2px 3px);
-  opacity: 0.45;
-  mix-blend-mode: multiply;
 }
 
 .review-screen {
@@ -387,14 +381,25 @@ button {
   align-items: center;
 }
 
+.review-carousel-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .carousel-arrow {
-  height: min(180px, 70%);
-  border: 3px solid #fff0ba;
-  border-radius: 10px;
-  background: rgba(8, 8, 12, 0.82);
+  height: auto;
+  border: 0;
+  background: transparent;
   color: var(--accent);
-  font-size: 28px;
+  font-size: clamp(26px, 4.4vw, 40px);
   font-weight: 900;
+  line-height: 1;
+  padding: 0;
+  text-shadow: 3px 3px 0 #000;
+}
+
+.carousel-arrow:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 6px;
 }
 
 .carousel-arrow:disabled {
@@ -402,27 +407,41 @@ button {
   opacity: 0.28;
 }
 
-.carousel-tweet,
-.carousel-empty {
+.carousel-tweet {
+  min-width: 0;
   min-height: 100%;
-  border: 3px solid #fff0ba;
+  border: 3px solid var(--accent);
   border-radius: 14px;
   background: rgba(10, 10, 16, 0.82);
   padding: clamp(14px, 3.2%, 22px);
   display: grid;
   align-content: center;
   gap: 14px;
-  box-shadow: inset 0 0 26px rgba(255, 223, 93, 0.08);
+  box-shadow: inset 0 0 26px rgba(231, 154, 27, 0.08);
+}
+
+.carousel-empty {
+  min-height: 100%;
+  border: 0;
+  background: transparent;
+  padding: clamp(14px, 3.2%, 22px);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 14px;
 }
 
 .carousel-tweet blockquote {
   margin: 0;
+  max-width: 100%;
   color: #fff9e8;
   font-size: clamp(13px, 2vw, 18px);
   line-height: 1.65;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.carousel-empty h3,
 .carousel-empty p {
   margin: 0;
 }
@@ -443,7 +462,8 @@ button {
 }
 
 .review-screen .carousel-arrow {
-  font-size: 28px;
+  padding: 0;
+  font-size: clamp(26px, 4.4vw, 40px);
 }
 
 .review-screen .notice {
@@ -502,7 +522,7 @@ button {
 }
 
 .tweet-meta {
-  color: var(--muted);
+  color: var(--accent);
   font-size: 12px;
   display: flex;
   flex-wrap: wrap;
@@ -515,5 +535,185 @@ button {
   border-radius: 12px;
   padding: 14px;
   color: var(--muted);
+}
+
+.intro-banner {
+  width: min(560px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-family: var(--ui-font);
+  text-align: left;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  text-shadow: none;
+}
+
+.intro-banner p {
+  margin: 0;
+  color: rgba(246, 240, 223, 0.78);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+}
+
+.intro-banner a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+}
+
+.intro-banner a:hover,
+.intro-banner a:focus-visible {
+  color: #fff;
+}
+
+.intro-banner-status {
+  font-size: 12px;
+  color: rgba(246, 240, 223, 0.6);
+}
+
+.intro-banner-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.intro-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.unlink-button {
+  border-width: 2px;
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+.arcade-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: rgba(246, 240, 223, 0.55);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 0;
+  text-shadow: none;
+  justify-self: start;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(2, 4, 10, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 3vw, 24px);
+}
+
+.auth-modal {
+  width: min(540px, 100%);
+  background: #050508;
+  border: 4px solid var(--accent);
+  border-radius: 16px;
+  padding: clamp(20px, 3vw, 32px);
+  color: var(--ink);
+  font-family: var(--tweet-font);
+  text-align: center;
+  display: grid;
+  gap: clamp(12px, 2vw, 18px);
+  text-shadow: 2px 2px 0 #000;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.auth-modal h2 {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(18px, 3.6vw, 28px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.auth-modal p {
+  margin: 0;
+  font-size: clamp(11px, 1.5vw, 14px);
+  line-height: 1.7;
+}
+
+.auth-modal-hint {
+  color: var(--muted);
+  font-size: clamp(10px, 1.2vw, 12px);
+}
+
+.auth-modal-hint strong {
+  color: var(--accent);
+}
+
+.auth-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(8px, 2vw, 14px);
+  margin-top: clamp(4px, 1vw, 8px);
+}
+
+.arcade-button {
+  appearance: none;
+  border: 3px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--tweet-font);
+  font-size: clamp(11px, 1.5vw, 14px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: clamp(10px, 2vw, 14px) clamp(16px, 3vw, 22px);
+  border-radius: 12px;
+  cursor: pointer;
+  text-shadow: 2px 2px 0 #000;
+  transition: transform 80ms ease, background 80ms ease;
+}
+
+.arcade-button:hover,
+.arcade-button:focus-visible {
+  background: rgba(231, 154, 27, 0.14);
+  outline: none;
+}
+
+.arcade-button:active {
+  transform: translateY(1px);
+}
+
+.arcade-button-secondary {
+  border-color: var(--muted);
+  color: var(--ink);
+}
+
+.arcade-button-secondary:hover,
+.arcade-button-secondary:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
 }
 
