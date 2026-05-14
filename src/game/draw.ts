@@ -424,7 +424,7 @@ function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, time
   ctx.translate(target.x, target.y);
 
   if (target.status === "hit") {
-    drawClayFragments(ctx, clayTargetAtlas, timeMs);
+    drawClayFragments(ctx, timeMs);
     ctx.restore();
     return;
   }
@@ -434,25 +434,27 @@ function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, time
   ctx.restore();
 }
 
-function drawClayFragments(ctx: CanvasRenderingContext2D, clayTargetAtlas: CanvasImageSource, timeMs: number) {
-  const tinyFrame = CLAY_TARGET_FRAMES[CLAY_TARGET_FRAMES.length - 1];
-  const smallFrame = CLAY_TARGET_FRAMES[CLAY_TARGET_FRAMES.length - 3];
-  const wobble = Math.floor((timeMs / 80) % 2) * 2;
-  const pieces = [
-    { frame: tinyFrame, x: -20 - wobble, y: -12, rotation: -0.45 },
-    { frame: smallFrame, x: 9 + wobble, y: -8, rotation: 0.35 },
-    { frame: tinyFrame, x: -5, y: 12 + wobble, rotation: 0.15 }
-  ];
+function drawClayFragments(ctx: CanvasRenderingContext2D, timeMs: number) {
+  const flicker = Math.floor((timeMs / 90) % 2);
+  const particles = [
+    [-34, -42, 2], [34, -42, 2],
+    [-14, -25, 2], [14, -26, 2],
+    [-40, -6, 2], [0, -4, 2], [40, -8, 2],
+    [-25, 18, 2], [25, 18, 2],
+    [-43, 38, 2], [-5, 45, 2], [42, 36, 2]
+  ] satisfies Array<[x: number, y: number, size: number]>;
 
-  for (const piece of pieces) {
-    const width = piece.frame.width * CLAY_SPRITE_SCALE;
-    const height = piece.frame.height * CLAY_SPRITE_SCALE;
-    ctx.save();
-    ctx.translate(piece.x, piece.y);
-    ctx.rotate(piece.rotation);
-    ctx.drawImage(clayTargetAtlas, piece.frame.x, piece.frame.y, piece.frame.width, piece.frame.height, -width / 2, -height / 2, width, height);
-    ctx.restore();
+  ctx.save();
+  for (const [x, y, size] of particles) {
+    const pixelSize = size * CLAY_SPRITE_SCALE * 0.5;
+    const drawX = x + Math.sign(x || 1) * flicker - pixelSize / 2;
+    const drawY = y + Math.sign(y || 1) * flicker - pixelSize / 2;
+    ctx.fillStyle = "#08080c";
+    ctx.fillRect(drawX + 1, drawY + 1, pixelSize, pixelSize);
+    ctx.fillStyle = "#fffefd";
+    ctx.fillRect(drawX, drawY, pixelSize, pixelSize);
   }
+  ctx.restore();
 }
 
 export function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number) {

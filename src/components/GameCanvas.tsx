@@ -39,8 +39,6 @@ import {
 } from "@/game/constants";
 import {
   CLAY_PATHS,
-  CLAY_IMAGE_BY_DISTANCE,
-  CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS,
   FIXED_STEP_MS,
   GAME_A_LAUNCH_PATHS,
   GAME_B_PATHS,
@@ -50,9 +48,6 @@ import {
   canvasToNesX,
   canvasToNesY,
   chooseBoundaryMotion,
-  clayDistanceClass,
-  clayImageIndex,
-  clayRowOffset,
   clayScoreForRound,
   clayZapperShape,
   createRng,
@@ -61,19 +56,16 @@ import {
   duckZapperShapeForRound,
   flyAwayTimerForRound,
   gameBDuckSpeedIndex,
-  initializeClayMemory,
   modeReleaseDelay,
   nesToCanvasX,
   nesToCanvasY,
   perfectBonusForRound,
   pointHitsZapperShape,
-  projectClay,
   readSpeedAndAdvance,
   rngNext,
   setMotionCode,
   syncCanvasPosition,
   targetColorForIndex,
-  updateClayFixedPoint,
   type RngState
 } from "@/game/duckHuntMechanics";
 import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
@@ -220,7 +212,11 @@ function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
-function createTransparentCanvas(image: HTMLImageElement, transparentColor: [number, number, number]) {
+function createTransparentCanvas(
+  image: HTMLImageElement,
+  transparentColor: [number, number, number],
+  replacements: Array<{ from: [number, number, number]; to: [number, number, number, number?] }> = []
+) {
   const canvas = document.createElement("canvas");
   canvas.width = image.naturalWidth;
   canvas.height = image.naturalHeight;
@@ -234,6 +230,19 @@ function createTransparentCanvas(image: HTMLImageElement, transparentColor: [num
   for (let index = 0; index < imageData.data.length; index += 4) {
     if (imageData.data[index] === r && imageData.data[index + 1] === g && imageData.data[index + 2] === b) {
       imageData.data[index + 3] = 0;
+      continue;
+    }
+
+    for (const replacement of replacements) {
+      const [fromR, fromG, fromB] = replacement.from;
+      if (imageData.data[index] === fromR && imageData.data[index + 1] === fromG && imageData.data[index + 2] === fromB) {
+        const [toR, toG, toB, toA] = replacement.to;
+        imageData.data[index] = toR;
+        imageData.data[index + 1] = toG;
+        imageData.data[index + 2] = toB;
+        if (toA !== undefined) imageData.data[index + 3] = toA;
+        break;
+      }
     }
   }
   ctx.putImageData(imageData, 0, 0);
@@ -386,21 +395,20 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   target.shootable = true;
 
   if (target.kind === "clay") {
-    const pathId = rngNext(state.rng) % CLAY_PATHS.length;
-    const memory = initializeClayMemory(CLAY_PATHS[pathId]);
-    const projection = projectClay(memory);
-    const distanceImageIndex = clayImageIndex(memory);
-    const claySpriteIndex = CLAY_IMAGE_BY_DISTANCE[distanceImageIndex] - 0x18;
-    target.pathId = pathId;
-    target.clayMemory = memory;
-    target.nesX = projection.x;
-    target.nesY = projection.y;
-    target.distanceClass = clayDistanceClass(memory);
-    target.clayImageIndex = claySpriteIndex;
-    target.speedIndex = CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS[clayRowOffset(state.roundNumber) + (target.distanceClass ?? 0)];
-    target.zapperShape = clayZapperShape(state.roundNumber, claySpriteIndex);
-    target.direction = target.slotIndex === 0 ? -1 : 1;
-    syncCanvasPosition(target);
+    const direction = target.slotIndex === 0 ? -1 : 1;
+    const launchJitter = (rngNext(state.rng) % 36) - 18;
+    const speedJitter = rngNext(state.rng) % 50;
+    target.pathId = rngNext(state.rng) % CLAY_PATHS.length;
+    target.direction = direction;
+    target.x = CANVAS_WIDTH / 2 + direction * (58 + Math.abs(launchJitter));
+    target.y = CANVAS_HEIGHT - 170;
+    target.vx = direction * (145 + speedJitter);
+    target.vy = -430 - (rngNext(state.rng) % 55);
+    target.nesX = canvasToNesX(target.x);
+    target.nesY = canvasToNesY(target.y);
+    target.clayImageIndex = 0;
+    target.distanceClass = 0;
+    target.zapperShape = clayZapperShape(state.roundNumber, 0);
     return;
   }
 
@@ -543,15 +551,13 @@ function advanceFixedStep(state: RuntimeState, now: number) {
       target.hitPauseTimer = Math.max((target.hitPauseTimer ?? 0) - 1, 0);
       if (target.hitPauseTimer === 0) {
         state.score += target.points;
-        if (target.kind === "bird") {
-          state.scoreReveals.push({
-            id: `${target.id}_${now}`,
-            x: target.x,
-            y: target.y,
-            points: target.points,
-            expiresAtMs: now + 900
-          });
-        }
+        state.scoreReveals.push({
+          id: `${target.id}_${now}`,
+          x: target.x,
+          y: target.y,
+          points: target.points,
+          expiresAtMs: now + 900
+        });
         target.mechanicsState = target.kind === "clay" ? "fragmenting" : "falling";
       }
       continue;
@@ -646,24 +652,20 @@ function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
 }
 
 function updateClayTarget(state: RuntimeState, target: TargetEntity) {
-  const memory = target.clayMemory;
-  if (!memory) return;
+  const dt = FIXED_STEP_MS / 1000;
+  target.vy += 260 * dt;
+  target.x += target.vx * dt;
+  target.y += target.vy * dt;
+  target.nesX = canvasToNesX(target.x);
+  target.nesY = canvasToNesY(target.y);
 
-  const distanceClass = clayDistanceClass(memory);
-  target.distanceClass = distanceClass;
-  target.speedIndex = CLAY_SPEED_INDEX_BY_ROW_AND_DISTANCE_CLASS[clayRowOffset(state.roundNumber) + distanceClass];
-  const steps = readSpeedAndAdvance(target);
-  for (let step = 0; step < steps; step += 1) updateClayFixedPoint(memory);
+  const ageMs = performance.now() - target.createdAtMs;
+  const imageIndex = Math.min(Math.floor(ageMs / 260), 11);
+  target.clayImageIndex = imageIndex;
+  target.distanceClass = Math.min(Math.floor(imageIndex / 2), 7);
+  target.zapperShape = clayZapperShape(state.roundNumber, imageIndex);
 
-  const projection = projectClay(memory);
-  target.nesX = projection.x;
-  target.nesY = projection.y;
-  const distanceImageIndex = clayImageIndex(memory);
-  target.clayImageIndex = CLAY_IMAGE_BY_DISTANCE[distanceImageIndex] - 0x18;
-  target.zapperShape = clayZapperShape(state.roundNumber, target.clayImageIndex);
-  syncCanvasPosition(target);
-
-  if ((target.nesX ?? 0) < -20 || (target.nesX ?? 0) > NES_WIDTH + 20 || (target.nesY ?? 0) > NES_HEIGHT + 20 || distanceClass >= 7) {
+  if (target.x < -90 || target.x > CANVAS_WIDTH + 90 || target.y > CANVAS_HEIGHT - 120 || target.y < -90) {
     markEscaped(state, target, performance.now());
   }
 }
@@ -824,7 +826,9 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   useEffect(() => {
     const image = new Image();
     image.onload = () => {
-      clayTargetAtlasRef.current = createTransparentCanvas(image, [254, 211, 186]);
+      clayTargetAtlasRef.current = createTransparentCanvas(image, [254, 211, 186], [
+        { from: [72, 205, 222], to: [72, 205, 222, 0] }
+      ]);
     };
     image.src = clayTargetAtlasAsset.src;
 
@@ -1211,14 +1215,6 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         date: formatDate(hit.tweet.createdAt),
         points: hit.points,
         expiresAt: now + 3400
-      });
-    } else if (mode === "C") {
-      setMicroReveal({
-        id: `${hit.id}_${now}`,
-        text: "Clay tweet shattered. No live tweet affected.",
-        date: "practice target",
-        points: hit.points,
-        expiresAt: now + 3150
       });
     }
   }

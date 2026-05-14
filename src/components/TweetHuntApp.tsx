@@ -219,7 +219,7 @@ export function TweetHuntApp() {
           ? `Warning: Game ${pendingMode} uses live tweets from your linked X account. Shooting a tweet bird immediately deletes that tweet from X. Continue?`
         : authStatus === "unknown"
           ? "Checking your authorization status…"
-          : `Game ${pendingMode} needs permission to read tweets from your X account. Authorize with X to continue.`;
+          : "Tweet Hunt needs permission to delete tweets from your X account. Authorize with X to continue.";
 
     const modalPrimaryLabel =
       isLoadingTweets
@@ -268,7 +268,7 @@ export function TweetHuntApp() {
               <h2 id="auth-modal-title">Game {pendingMode}</h2>
               <p>{modalCopy}</p>
               <p className="auth-modal-hint">
-                Want to practice without consequences? Cancel and choose <strong>Game C</strong> (clay shooting).
+                Want to play without consequences? Cancel and choose <strong>Game C</strong> (clay shooting).
               </p>
               <div className="auth-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
@@ -291,9 +291,10 @@ export function TweetHuntApp() {
   }
 
   if (stage === "play") {
+    const isClayMode = config.mode === "C";
     return (
-      <main className="game-shell game-shell-with-banner">
-        {renderIntroBanner()}
+      <main className={`game-shell${isClayMode ? "" : " game-shell-with-banner"}`}>
+        {isClayMode ? null : renderIntroBanner()}
         <div className="game-stage">
           <GameCanvas mode={config.mode} roundNumber={roundNumber} tweets={roundTweets} onRoundEnd={handleRoundEnd} />
         </div>

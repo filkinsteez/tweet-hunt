@@ -24,7 +24,7 @@ body {
   margin: 0;
   background: radial-gradient(circle at 50% 0%, #2b2b35 0%, var(--bg) 48%, #050508 100%);
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--ui-font);
 }
 
 button,
@@ -444,6 +444,7 @@ button {
 
 .carousel-empty p {
   margin: 0;
+  line-height: 1.6;
 }
 
 .review-footer {
@@ -636,6 +637,7 @@ button {
 }
 
 .auth-modal {
+  position: relative;
   width: min(540px, 100%);
   background: #050508;
   border: 4px solid var(--accent);
@@ -648,6 +650,37 @@ button {
   gap: clamp(12px, 2vw, 18px);
   text-shadow: 2px 2px 0 #000;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.auth-modal::before,
+.auth-modal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-modal::before {
+  z-index: 10;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, rgba(255, 255, 255, 0.035) 1px 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.10) 0 1px, rgba(35, 255, 120, 0.08) 1px 2px, rgba(70, 120, 255, 0.10) 2px 3px);
+  opacity: 0.34;
+}
+
+.auth-modal::after {
+  z-index: 11;
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.018) 38%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.42) 100%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.10), transparent 24%, transparent 74%, rgba(255, 255, 255, 0.04));
+  mix-blend-mode: screen;
+}
+
+.auth-modal > * {
+  position: relative;
+  z-index: 3;
 }
 
 .auth-modal h2 {

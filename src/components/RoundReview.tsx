@@ -14,6 +14,8 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet), [result.hits]);
+  const isClayRound = result.mode === "C";
+  const clayHits = result.hits.length;
   const currentHit = destructiveHits[currentIndex] ?? null;
   const currentTweet = currentHit?.tweet;
 
@@ -50,7 +52,13 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
     <section className="review-screen" aria-label={`Round ${result.roundNumber} review`}>
       <header className="review-header">
         <p className="kicker">Round {result.roundNumber} review</p>
-        <h2>{destructiveHits.length > 0 ? `Deleted tweets ${currentIndex + 1}/${destructiveHits.length}` : "No tweets deleted"}</h2>
+        <h2>
+          {isClayRound
+            ? "Clay shooting"
+            : destructiveHits.length > 0
+              ? `Deleted tweets ${currentIndex + 1}/${destructiveHits.length}`
+              : "No tweets deleted"}
+        </h2>
       </header>
 
       <div className={`review-carousel${destructiveHits.length === 0 ? " review-carousel-empty" : ""}`}>
@@ -73,7 +81,11 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
           </article>
         ) : (
           <div className="carousel-empty">
-            <p>{result.mode === "C" ? "Game C is practice only. No tweets are deleted." : "No tweet targets were hit this round."}</p>
+            <p>
+              {isClayRound
+                ? `You shot ${clayHits} clay pigeon${clayHits === 1 ? "" : "s"}. No tweets were deleted.`
+                : "No tweet targets were hit this round."}
+            </p>
           </div>
         )}
 
