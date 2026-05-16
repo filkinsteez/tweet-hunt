@@ -330,7 +330,7 @@ export function TweetHuntApp() {
       isLoadingTweets
         ? "Loading live tweets from your linked X account..."
         : authStatus === "authorized"
-          ? `Game ${pendingMode} uses live tweets from your linked X account. Shooting a tweet bird immediately deletes that tweet from X. Continue?`
+          ? `Game ${pendingMode} uses live tweets from your linked X account. Shooting a bird immediately deletes that tweet from X. Continue?`
         : authStatus === "unknown"
           ? "Checking your authorization status…"
           : "Tweet Hunt needs permission to delete tweets from your X account. Authorize with X to continue.";
