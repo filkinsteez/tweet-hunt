@@ -75,6 +75,10 @@ export type TargetEntity = {
   erraticRate?: number;
   fliesBehindTree?: boolean;
   pingPongEdges?: boolean;
+  launchSoundPlayed?: boolean;
+  fallSoundPlayed?: boolean;
+  groundSoundPlayed?: boolean;
+  flyAwaySoundPlayed?: boolean;
 };
 
 export type HitRecord = {

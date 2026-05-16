@@ -75,6 +75,7 @@ import {
   type RngState
 } from "@/game/duckHuntMechanics";
 import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
+import { gameAudio, type GameSoundKey } from "@/game/audio";
 import {
   clearScene,
   drawClayEnvironment,
@@ -126,6 +127,7 @@ type RuntimeState = {
   lastPathId: number;
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
+  dogLaughSoundPlayed: boolean;
   scoreReveals: Array<{
     id: string;
     x: number;
@@ -241,6 +243,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     lastPathId: -1,
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
+    dogLaughSoundPlayed: false,
     scoreReveals: [],
     ended: false
   };
@@ -512,6 +515,17 @@ function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: n
   };
 }
 
+function playTargetSound(
+  target: TargetEntity,
+  key: GameSoundKey,
+  flag: "launchSoundPlayed" | "fallSoundPlayed" | "groundSoundPlayed" | "flyAwaySoundPlayed",
+  volume?: number
+) {
+  if (target[flag]) return;
+  target[flag] = true;
+  gameAudio.play(key, volume);
+}
+
 function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   target.status = "flying";
   target.mechanicsState = "flying";
@@ -533,6 +547,8 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
     target.clayImageIndex = 0;
     target.distanceClass = 0;
     target.zapperShape = clayZapperShape(state.roundNumber, 0);
+    playTargetSound(target, "clayPigeonLaunch", "launchSoundPlayed", 0.72);
+    gameAudio.startLoop("clayPigeonFlying", 0.32);
     return;
   }
 
@@ -555,6 +571,7 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
     setMotionCode(target, 0);
     syncCanvasPosition(target);
     loadNextGameBSegment(target);
+    playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
     return;
   }
 
@@ -575,6 +592,7 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   target.speedIndex = duckSpeedIndexForRound(state.roundNumber);
   setMotionCode(target, motionCode);
   syncCanvasPosition(target);
+  playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
 }
 
 function loadNextGameBSegment(target: TargetEntity) {
@@ -595,6 +613,7 @@ function loadNextGameBSegment(target: TargetEntity) {
 }
 
 function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: number) {
+  gameAudio.stopLoop("clayPigeonFlying");
   const count = Math.min(targetsPerVolley(state.mode), state.targetLimit - state.targetsPresented);
   const targets: TargetEntity[] = [];
 
@@ -618,6 +637,7 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   state.launchSlotIndex = 0;
   state.retrieveDogTriggeredAtMs = undefined;
   state.retrieveDogX = undefined;
+  state.dogLaughSoundPlayed = false;
 }
 
 function markEscaped(state: RuntimeState, target: TargetEntity, now: number) {
@@ -635,10 +655,12 @@ function markEscaped(state: RuntimeState, target: TargetEntity, now: number) {
 
 function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
   if (state.ended) return;
+  gameAudio.stopLoop("clayPigeonFlying");
   state.ended = true;
   state.phase = "ended";
   if (!state.isLiveTweetRound && state.hits.length === state.targetLimit) {
     state.score += perfectBonusForRound(state.roundNumber);
+    gameAudio.play("perfectRound", 0.82);
   }
   const passLine = state.isLiveTweetRound ? Math.min(passLineForRound(state.roundNumber), state.targetLimit) : passLineForRound(state.roundNumber);
   onRoundEnd({
@@ -665,6 +687,7 @@ function advanceFixedStep(state: RuntimeState, now: number) {
     if (state.shotsRemaining <= 0) {
       for (const target of state.targets) {
         if (target.kind === "bird" && target.mechanicsState === "flying" && !target.flyAwayFlag) {
+          playTargetSound(target, "duckQuack", "flyAwaySoundPlayed", 0.55);
           target.flyAwayFlag = true;
           setMotionCode(target, 0);
         }
@@ -685,6 +708,8 @@ function advanceFixedStep(state: RuntimeState, now: number) {
           expiresAtMs: now + 900
         });
         target.mechanicsState = target.kind === "clay" ? "fragmenting" : "falling";
+        if (target.kind === "clay") stopClayFlyingToneIfNoActiveClays(state);
+        if (target.kind === "bird") playTargetSound(target, "duckFalling", "fallSoundPlayed", 0.72);
       }
       continue;
     }
@@ -696,7 +721,10 @@ function advanceFixedStep(state: RuntimeState, now: number) {
 
     if (target.mechanicsState === "fragmenting") {
       target.hitPauseTimer = Math.max((target.hitPauseTimer ?? 0) - 1, 0);
-      if (target.hitPauseTimer === 0) target.mechanicsState = "clear";
+      if (target.hitPauseTimer === 0) {
+        target.mechanicsState = "clear";
+        stopClayFlyingToneIfNoActiveClays(state);
+      }
       continue;
     }
 
@@ -745,6 +773,7 @@ function updateGameADuck(state: RuntimeState, target: TargetEntity) {
   if (!target.flyAwayFlag && (state.fixedFrameCounter & 1) === 1) {
     target.flyAwayTimer = Math.max((target.flyAwayTimer ?? 0) - 1, 0);
     if (target.flyAwayTimer === 0) {
+      playTargetSound(target, "duckQuack", "flyAwaySoundPlayed", 0.55);
       target.flyAwayFlag = true;
     }
   }
@@ -793,7 +822,14 @@ function updateClayTarget(state: RuntimeState, target: TargetEntity) {
 
   if (target.x < -90 || target.x > CANVAS_WIDTH + 90 || target.y > CANVAS_HEIGHT - 120 || target.y < -90) {
     markEscaped(state, target, performance.now());
+    stopClayFlyingToneIfNoActiveClays(state);
   }
+}
+
+function stopClayFlyingToneIfNoActiveClays(state: RuntimeState) {
+  if (state.mode !== "C") return;
+  const hasFlyingClay = state.targets.some((target) => target.kind === "clay" && target.mechanicsState === "flying" && target.status === "flying");
+  if (!hasFlyingClay) gameAudio.stopLoop("clayPigeonFlying");
 }
 
 function updateFallingDuck(target: TargetEntity) {
@@ -802,6 +838,7 @@ function updateFallingDuck(target: TargetEntity) {
   target.vy = 260;
   target.vx = target.direction * 55;
   syncCanvasPosition(target);
+  if (target.y >= DOG_RETRIEVE_TRIGGER_Y) playTargetSound(target, "duckGroundHit", "groundSoundPlayed", 0.7);
   if ((target.nesY ?? 0) > NES_HEIGHT + 20) target.mechanicsState = "clear";
 }
 
@@ -1163,8 +1200,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     pauseStartedAtRef.current = null;
     setPaused(false);
     stateRef.current = state;
+    if (mode !== "C") gameAudio.play("dogBark", 0.72);
 
     return () => {
+      gameAudio.stopLoop("clayPigeonFlying");
       stateRef.current = null;
     };
   }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound]);
@@ -1216,6 +1255,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
         state.retrieveDogTriggeredAtMs = timeMs;
         const averageX = birdsBehindGrass.reduce((sum, target) => sum + target.x, 0) / birdsBehindGrass.length;
         state.retrieveDogX = Math.min(Math.max(averageX, 90), CANVAS_WIDTH - 90);
+        gameAudio.play("dogRetrieve", 0.78);
       }
     }
 
@@ -1231,6 +1271,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       retrieveDogAgeMs < retrieveDogSequenceMs;
     const shouldShowLaughDog =
       resolveDogState === "laugh" && laughDogAgeMs >= 0 && laughDogAgeMs < laughDogSequenceMs;
+    if (shouldShowLaughDog && !state.dogLaughSoundPlayed) {
+      state.dogLaughSoundPlayed = true;
+      gameAudio.play("dogLaugh", 0.78);
+    }
     const dogReturnedBehindGrass =
       retrieveDogState &&
       state.retrieveDogTriggeredAtMs !== undefined &&
@@ -1395,6 +1439,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     hit.vx = hit.direction * 55;
     hit.vy = 260;
     state.lastVolleyHitCount += 1;
+    gameAudio.play(hit.kind === "clay" ? "clayPigeonHit" : "duckHit", 0.78);
 
     const record: HitRecord = {
       targetId: hit.id,
