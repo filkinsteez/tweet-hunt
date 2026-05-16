@@ -8,8 +8,8 @@ export type GameSoundKey =
   | "duckFalling"
   | "duckFlying"
   | "duckGroundHit"
-  | "duckHit"
   | "duckQuack"
+  | "gunShoot"
   | "perfectRound";
 
 const SOUND_URLS: Record<GameSoundKey, string> = {
@@ -22,8 +22,8 @@ const SOUND_URLS: Record<GameSoundKey, string> = {
   duckFalling: new URL("../../Assets/Audio/duck_falling.wav", import.meta.url).href,
   duckFlying: new URL("../../Assets/Audio/duck_flying.wav", import.meta.url).href,
   duckGroundHit: new URL("../../Assets/Audio/duck_ground_hit.wav", import.meta.url).href,
-  duckHit: new URL("../../Assets/Audio/duck_hit.wav", import.meta.url).href,
   duckQuack: new URL("../../Assets/Audio/duck_quack.wav", import.meta.url).href,
+  gunShoot: new URL("../../Assets/Audio/gun_shoot.wav", import.meta.url).href,
   perfectRound: new URL("../../Assets/Audio/perfect_round.wav", import.meta.url).href
 };
 

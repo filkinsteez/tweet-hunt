@@ -128,6 +128,7 @@ type RuntimeState = {
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
   dogLaughSoundPlayed: boolean;
+  dogBarkCounterFrames: number;
   scoreReveals: Array<{
     id: string;
     x: number;
@@ -195,6 +196,9 @@ const BIRD_LAUNCH_Y_MIN = FOREGROUND_GRASS_TOP_Y - 28;
 const BIRD_LAUNCH_Y_MAX = FOREGROUND_GRASS_TOP_Y - 14;
 const BIRD_FLIGHT_FLOOR_Y = FOREGROUND_GRASS_TOP_Y - 10;
 const MIN_BIRD_SCREEN_TIME_MS = 1800;
+const DOG_BARK_INITIAL_FRAMES = 4;
+const DOG_BARK_REPEAT_FRAMES = 16;
+const DUCK_FLAP_INTERVAL_FRAMES = 8;
 
 const HUD_LAYOUT = {
   round: { x: 35, y: CANVAS_HEIGHT - 132 },
@@ -244,6 +248,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
     dogLaughSoundPlayed: false,
+    dogBarkCounterFrames: DOG_BARK_INITIAL_FRAMES,
     scoreReveals: [],
     ended: false
   };
@@ -679,8 +684,17 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
 }
 
 function advanceFixedStep(state: RuntimeState, now: number) {
-  if (state.phase !== "active" && state.phase !== "resolve") return;
+  if (state.phase !== "active" && state.phase !== "resolve" && state.phase !== "intro") return;
   state.fixedFrameCounter += 1;
+
+  if (state.phase === "intro" && state.mode !== "C") {
+    state.dogBarkCounterFrames -= 1;
+    if (state.dogBarkCounterFrames <= 0) {
+      gameAudio.play("dogBark", 0.72);
+      state.dogBarkCounterFrames = DOG_BARK_REPEAT_FRAMES;
+    }
+    return;
+  }
 
   if (state.phase === "active") {
     advanceLaunchQueue(state, now);
@@ -730,9 +744,13 @@ function advanceFixedStep(state: RuntimeState, now: number) {
 
     if (state.phase !== "active" || target.mechanicsState !== "flying" || target.status !== "flying") continue;
 
-    if (target.kind === "clay") updateClayTarget(state, target);
-    else if (state.mode === "B") updateGameBDuck(state, target);
-    else updateGameADuck(state, target);
+    if (target.kind === "clay") {
+      updateClayTarget(state, target);
+    } else {
+      if (state.fixedFrameCounter % DUCK_FLAP_INTERVAL_FRAMES === 0) gameAudio.play("duckFlying", 0.36);
+      if (state.mode === "B") updateGameBDuck(state, target);
+      else updateGameADuck(state, target);
+    }
   }
 
   if (state.phase === "active" && !state.targets.some(isTargetUnresolved)) {
@@ -1200,7 +1218,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     pauseStartedAtRef.current = null;
     setPaused(false);
     stateRef.current = state;
-    if (mode !== "C") gameAudio.play("dogBark", 0.72);
 
     return () => {
       gameAudio.stopLoop("clayPigeonFlying");
@@ -1231,7 +1248,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       startNextVolley(state, tweetsRef.current, timeMs);
     }
 
-    if (!pausedRef.current && (state.phase === "active" || state.phase === "resolve")) {
+    if (!pausedRef.current && (state.phase === "intro" || state.phase === "active" || state.phase === "resolve")) {
       if (state.lastFrameAtMs === undefined) state.lastFrameAtMs = timeMs;
       state.fixedStepAccumulatorMs += Math.min(timeMs - state.lastFrameAtMs, 250);
       state.lastFrameAtMs = timeMs;
@@ -1416,6 +1433,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     const nesPoint = { x: canvasToNesX(point.x), y: canvasToNesY(point.y) };
     state.shotsRemaining -= 1;
     state.shotsFired += 1;
+    gameAudio.play("gunShoot", 0.82);
 
     const hit = state.targets.find((target) => {
       if (target.status !== "flying" || target.mechanicsState !== "flying" || !target.shootable) return false;
@@ -1439,7 +1457,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     hit.vx = hit.direction * 55;
     hit.vy = 260;
     state.lastVolleyHitCount += 1;
-    gameAudio.play(hit.kind === "clay" ? "clayPigeonHit" : "duckHit", 0.78);
+    if (hit.kind === "clay") gameAudio.play("clayPigeonHit", 0.78);
 
     const record: HitRecord = {
       targetId: hit.id,
