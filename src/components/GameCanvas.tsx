@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import crtAsset from "../../Assets/CRT/crt_edited.png";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
-import envAtlasAsset from "../../Assets/Sprites/Environment/env_atlas.png";
 import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
+import clayBackgroundAsset from "../../Assets/Sprites/Clay/clay_bg.jpg";
+import clayFilledPigeonAsset from "../../Assets/Sprites/Clay/clay_filled_pigeon.jpg";
+import clayHitAsset from "../../Assets/Sprites/Clay/clay_hit_counter.jpg";
+import clayHitCounterFilledAsset from "../../Assets/Sprites/Clay/clay_hit_counter_filled.jpg";
+import clayRoundAsset from "../../Assets/Sprites/Clay/clay_round_counter.jpg";
+import clayScoreAsset from "../../Assets/Sprites/Clay/clay_score_counter.jpg";
+import clayShotsAsset from "../../Assets/Sprites/Clay/clay_shot_counter.jpg";
 import clayTargetAtlasAsset from "../../Assets/Sprites/Clay/clay_target_atlas.png";
 import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
 import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
@@ -72,6 +78,9 @@ import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import {
   clearScene,
   drawClayEnvironment,
+  CLAY_HIT_HUD_ATLAS_FRAME,
+  drawClayHitCounterFilledOverlay,
+  drawClayHitHudIndicators,
   drawCrosshair,
   drawDog,
   drawForeground,
@@ -82,6 +91,7 @@ import {
   isIntroDogBehindGrass,
   type FlyFrameImages
 } from "@/game/draw";
+import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
 import type { BirdColor, GameMode, HitRecord, RoundResult, TargetEntity, TweetCandidate } from "@/game/types";
 
@@ -95,6 +105,8 @@ type RuntimeState = {
   volleyStartedAtMs: number;
   nextTweetIndex: number;
   targetsPresented: number;
+  targetLimit: number;
+  isLiveTweetRound: boolean;
   volleyNumber: number;
   targets: TargetEntity[];
   shotsRemaining: number;
@@ -128,6 +140,9 @@ type MicroReveal = {
   text: string;
   date: string;
   points: number;
+  likes: number;
+  comments: number;
+  retweets: number;
   expiresAt: number;
 } | null;
 
@@ -135,6 +150,7 @@ type Props = {
   mode: GameMode;
   roundNumber: number;
   tweets: TweetCandidate[];
+  isLiveTweetRound: boolean;
   onRoundEnd: (result: RoundResult) => void;
 };
 
@@ -155,7 +171,20 @@ async function deleteTweetOnHit(tweetId: string, mode: GameMode) {
   return response.ok;
 }
 
-type UiImageKey = "shots" | "hit" | "hitAtlas" | "round" | "roundAtlas" | "score" | "scoreAtlas";
+type UiImageKey =
+  | "shots"
+  | "hit"
+  | "hitAtlas"
+  | "round"
+  | "roundAtlas"
+  | "score"
+  | "scoreAtlas"
+  | "clayShots"
+  | "clayHit"
+  | "clayHitCounterFilled"
+  | "clayHitFilled"
+  | "clayRound"
+  | "clayScore";
 
 const FOREGROUND_GRASS_TOP_Y = 520;
 const BIRD_LAUNCH_Y_MIN = FOREGROUND_GRASS_TOP_Y - 28;
@@ -176,7 +205,7 @@ function roundUiX(roundNumber: number) {
   return HUD_LAYOUT.shots.x + (shotsWidth - roundWidth) / 2;
 }
 
-function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
+function createInitialState(mode: GameMode, roundNumber: number, targetLimit: number, isLiveTweetRound: boolean): RuntimeState {
   return {
     mode,
     roundNumber,
@@ -185,6 +214,8 @@ function createInitialState(mode: GameMode, roundNumber: number): RuntimeState {
     volleyStartedAtMs: performance.now(),
     nextTweetIndex: 0,
     targetsPresented: 0,
+    targetLimit,
+    isLiveTweetRound,
     volleyNumber: 0,
     targets: [],
     shotsRemaining: SHOTS_PER_VOLLEY,
@@ -317,15 +348,25 @@ function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number) {
   }
 }
 
-function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, images: Partial<Record<UiImageKey, HTMLImageElement>>) {
-  const shots = images.shots;
-  const hit = images.hit;
+function drawSpriteHud(
+  ctx: CanvasRenderingContext2D,
+  state: RuntimeState,
+  images: Partial<Record<UiImageKey, HTMLImageElement>>,
+  clayTargetAtlas: CanvasImageSource | null | undefined
+) {
+  const isClayMode = state.mode === "C";
+  const shots = isClayMode ? images.clayShots ?? images.shots : images.shots;
+  const hit = isClayMode ? images.clayHit ?? images.hit : images.hit;
   const hitAtlas = images.hitAtlas;
-  const round = images.round;
+  const round = isClayMode ? images.clayRound ?? images.round : images.round;
   const roundAtlas = images.roundAtlas;
-  const score = images.score;
+  const score = isClayMode ? images.clayScore ?? images.score : images.score;
   const scoreAtlas = images.scoreAtlas;
-  if (!shots || !hit || !hitAtlas || !round || !roundAtlas || !score || !scoreAtlas) {
+  const clayHitFilled = images.clayHitFilled;
+  const clayHitCounterFilled = images.clayHitCounterFilled;
+  const hitMarkersReady =
+    hitAtlas || (isClayMode && (clayHitCounterFilled || clayHitFilled || clayTargetAtlas));
+  if (!shots || !hit || !hitMarkersReady || !round || !roundAtlas || !score || !scoreAtlas) {
     return;
   }
 
@@ -337,7 +378,17 @@ function drawSpriteHud(ctx: CanvasRenderingContext2D, state: RuntimeState, image
   drawUiImage(ctx, score, HUD_LAYOUT.score.x, HUD_LAYOUT.score.y);
   drawRoundNumber(ctx, roundAtlas, state.roundNumber);
   maskSpentShots(ctx, state.shotsRemaining);
-  drawHitDucks(ctx, hitAtlas, state.hits.length);
+  if (isClayMode && clayHitCounterFilled && state.hits.length > 0) {
+    drawClayHitCounterFilledOverlay(ctx, clayHitCounterFilled, state.hits.length, HUD_LAYOUT.hit, UI_SCALE);
+  } else if (isClayMode && clayHitFilled) {
+    drawClayHitHudIndicators(ctx, clayHitFilled, state.hits.length, HUD_LAYOUT.hit, UI_SCALE);
+  } else if (isClayMode && clayTargetAtlas) {
+    drawClayHitHudIndicators(ctx, clayTargetAtlas, state.hits.length, HUD_LAYOUT.hit, UI_SCALE, {
+      sourceRect: CLAY_HIT_HUD_ATLAS_FRAME
+    });
+  } else if (hitAtlas) {
+    drawHitDucks(ctx, hitAtlas, state.hits.length);
+  }
   drawScoreNumber(ctx, scoreAtlas, state.score);
   ctx.restore();
 }
@@ -363,7 +414,7 @@ function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, ti
 function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
   const kind = mode === "C" ? "clay" : "bird";
   const color = targetColorForIndex(targetIndex % COLORS.length);
-  const points = kind === "clay" ? clayScoreForRound(roundNumber) : duckScoreForRound(roundNumber, color);
+  const points = kind === "clay" ? clayScoreForRound(roundNumber) : tweet ? totalTweetEngagement(tweet) : duckScoreForRound(roundNumber, color);
 
   return {
     id: kind === "clay" ? `clay_${roundNumber}_${targetIndex}` : `tweet_target_${roundNumber}_${targetIndex}_${tweet?.id ?? "mock"}`,
@@ -471,12 +522,12 @@ function loadNextGameBSegment(target: TargetEntity) {
 }
 
 function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: number) {
-  const count = Math.min(targetsPerVolley(state.mode), TARGETS_PER_ROUND - state.targetsPresented);
+  const count = Math.min(targetsPerVolley(state.mode), state.targetLimit - state.targetsPresented);
   const targets: TargetEntity[] = [];
 
   for (let index = 0; index < count; index += 1) {
     const targetIndex = state.targetsPresented + index;
-    const tweet = state.mode === "C" ? undefined : tweets[state.nextTweetIndex + index % Math.max(tweets.length, 1)];
+    const tweet = state.isLiveTweetRound ? tweets[state.nextTweetIndex + index] : undefined;
     targets.push(createWaitingTarget(state.mode, state.roundNumber, targetIndex, tweet));
   }
 
@@ -513,10 +564,10 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
   if (state.ended) return;
   state.ended = true;
   state.phase = "ended";
-  if (state.hits.length === TARGETS_PER_ROUND) {
+  if (!state.isLiveTweetRound && state.hits.length === state.targetLimit) {
     state.score += perfectBonusForRound(state.roundNumber);
   }
-  const passLine = passLineForRound(state.roundNumber);
+  const passLine = state.isLiveTweetRound ? Math.min(passLineForRound(state.roundNumber), state.targetLimit) : passLineForRound(state.roundNumber);
   onRoundEnd({
     mode: state.mode,
     roundNumber: state.roundNumber,
@@ -525,6 +576,8 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
     escapes: state.escapes,
     shotsFired: state.shotsFired,
     targetsPresented: state.targetsPresented,
+    targetLimit: state.targetLimit,
+    isLiveTweetRound: state.isLiveTweetRound,
     passLine,
     passed: state.hits.length >= passLine
   });
@@ -713,7 +766,7 @@ function isTargetUnresolved(target: TargetEntity) {
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
+export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
@@ -723,12 +776,12 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   const clayTargetAtlasRef = useRef<CanvasImageSource | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const envAtlasImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
   const dogTwoBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
   const foregroundImageRef = useRef<HTMLImageElement | null>(null);
+  const clayBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef<RuntimeState | null>(null);
   const rafRef = useRef<number | null>(null);
   const mouseRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
@@ -846,7 +899,13 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
       ["round", roundAsset.src],
       ["roundAtlas", roundAtlasAsset.src],
       ["score", scoreAsset.src],
-      ["scoreAtlas", scoreAtlasAsset.src]
+      ["scoreAtlas", scoreAtlasAsset.src],
+      ["clayShots", clayShotsAsset.src],
+      ["clayHit", clayHitAsset.src],
+      ["clayHitCounterFilled", clayHitCounterFilledAsset.src],
+      ["clayHitFilled", clayFilledPigeonAsset.src],
+      ["clayRound", clayRoundAsset.src],
+      ["clayScore", clayScoreAsset.src]
     ];
     const images = assets.map(([key, src]) => {
       const image = new Image();
@@ -878,15 +937,15 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   }, []);
 
   useEffect(() => {
-    const envAtlasImage = new Image();
-    envAtlasImage.src = envAtlasAsset.src;
-    envAtlasImage.onload = () => {
-      envAtlasImageRef.current = envAtlasImage;
+    const clayBackgroundImage = new Image();
+    clayBackgroundImage.src = clayBackgroundAsset.src;
+    clayBackgroundImage.onload = () => {
+      clayBackgroundImageRef.current = clayBackgroundImage;
     };
 
     return () => {
-      envAtlasImage.onload = null;
-      envAtlasImageRef.current = null;
+      clayBackgroundImage.onload = null;
+      clayBackgroundImageRef.current = null;
     };
   }, []);
 
@@ -958,7 +1017,8 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
   useEffect(() => {
     if (!assetReady || !fontReady) return undefined;
     const now = performance.now();
-    const state = createInitialState(mode, roundNumber);
+    const targetLimit = isLiveTweetRound ? Math.min(Math.max(tweetsRef.current.length, 1), TARGETS_PER_ROUND) : TARGETS_PER_ROUND;
+    const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound);
     if (mode === "C") {
       startNextVolley(state, tweetsRef.current, now);
       state.releaseDelayFrames = 0;
@@ -971,7 +1031,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     return () => {
       stateRef.current = null;
     };
-  }, [assetReady, fontReady, mode, roundNumber]);
+  }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound]);
 
   const draw = useCallback((timeMs: number) => {
     const canvas = canvasRef.current;
@@ -986,7 +1046,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     const isClayMode = state.mode === "C";
 
     if (isClayMode) {
-      drawClayEnvironment(ctx, envAtlasImageRef.current);
+      drawClayEnvironment(ctx, clayBackgroundImageRef.current);
     } else {
       clearScene(ctx, backgroundImageRef.current);
     }
@@ -1069,7 +1129,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
             (resolveDogState !== "laugh" && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS))));
 
     if (canAdvanceResolve) {
-      if (state.targetsPresented >= TARGETS_PER_ROUND) {
+      if (state.targetsPresented >= state.targetLimit) {
         finishRound(state, onRoundEndRef.current);
       } else {
         startNextVolley(state, tweetsRef.current, timeMs);
@@ -1118,7 +1178,7 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
     }
     drawScoreReveals(ctx, state, timeMs);
     if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
-    drawSpriteHud(ctx, state, uiImagesRef.current);
+    drawSpriteHud(ctx, state, uiImagesRef.current, clayTargetAtlasRef.current);
     crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
@@ -1214,6 +1274,9 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
         text: `Deleting: ${truncate(hit.tweet.text, 128)}`,
         date: formatDate(hit.tweet.createdAt),
         points: hit.points,
+        likes: hit.tweet.likes,
+        comments: hit.tweet.replies,
+        retweets: hit.tweet.reposts,
         expiresAt: now + 3400
       });
     }
@@ -1249,6 +1312,11 @@ export function GameCanvas({ mode, roundNumber, tweets, onRoundEnd }: Props) {
           <div className="hud-overlay" aria-hidden="true">
             <div className="micro-reveal">
               <p>{microReveal.text}</p>
+              <p className="micro-reveal-metrics">
+                <span>{microReveal.likes} likes</span>
+                <span>{microReveal.comments} comments</span>
+                <span>{microReveal.retweets} retweets</span>
+              </p>
             </div>
           </div>
         ) : null}

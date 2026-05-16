@@ -19,6 +19,7 @@ type XTweet = {
     like_count?: number;
     retweet_count?: number;
     reply_count?: number;
+    quote_count?: number;
   };
 };
 
@@ -60,6 +61,7 @@ function toTweetCandidate(tweet: XTweet): TweetCandidate {
     likes: metrics.like_count ?? 0,
     reposts: metrics.retweet_count ?? 0,
     replies: metrics.reply_count ?? 0,
+    quotes: metrics.quote_count ?? 0,
     source: "random",
     sourceLabel: "live X",
     url: `https://x.com/i/web/status/${tweet.id}`
@@ -87,7 +89,12 @@ export async function GET(request: NextRequest) {
     return jsonError("Could not read the linked X profile.", 502);
   }
 
-  const me = (await meResponse.json()) as XMeResponse;
+  let me: XMeResponse;
+  try {
+    me = (await meResponse.json()) as XMeResponse;
+  } catch {
+    return jsonError("Could not read the linked X profile.", 502);
+  }
   const userId = me.data?.id;
   if (!userId) {
     return jsonError("Could not identify the linked X account.", 502);
@@ -110,18 +117,13 @@ export async function GET(request: NextRequest) {
     return jsonError("Could not load live tweets from X.", 502);
   }
 
-  const tweetsJson = (await tweetsResponse.json()) as XTweetsResponse;
+  let tweetsJson: XTweetsResponse;
+  try {
+    tweetsJson = (await tweetsResponse.json()) as XTweetsResponse;
+  } catch {
+    return jsonError("Could not load live tweets from X.", 502);
+  }
   const availableTweets = uniqueTweetsById(tweetsJson.data ?? []);
-  if (availableTweets.length === 0) {
-    return jsonError("No live tweets were returned by X for this account.", 404);
-  }
-  if (availableTweets.length < CANDIDATES_PER_ROUND) {
-    return jsonError(
-      `This account only has ${availableTweets.length} available tweets, but a full round needs ${CANDIDATES_PER_ROUND}.`,
-      409
-    );
-  }
-
   const tweets = randomSample(availableTweets, CANDIDATES_PER_ROUND).map(toTweetCandidate);
 
   return NextResponse.json({ tweets });

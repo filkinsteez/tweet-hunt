@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import crtAsset from "../../Assets/CRT/crt_edited.png";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
+import welcomeAsset from "../../Assets/Sprites/UI/welcome_screen.png";
 import { GameCanvas } from "./GameCanvas";
 import { RoundReview } from "./RoundReview";
 import { TARGETS_PER_ROUND } from "@/game/constants";
+import { loadHighScores, mergeBestScore } from "@/game/highScores";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
 
-type Stage = "title" | "play" | "review";
+type Stage = "welcome" | "title" | "play" | "review";
 type AuthStatus = "unknown" | "authorized" | "unauthorized";
 type AuthError = null | "denied" | "state-mismatch" | "token-error" | "missing-config";
 
@@ -23,7 +25,7 @@ const AUTH_ERROR_COPY: Record<NonNullable<AuthError>, string> = {
 };
 
 export function TweetHuntApp() {
-  const [stage, setStage] = useState<Stage>("title");
+  const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
   const [config, setConfig] = useState<HuntConfig>({ mode: "A", source: "random" });
   const [lastResult, setLastResult] = useState<RoundResult | null>(null);
@@ -32,8 +34,11 @@ export function TweetHuntApp() {
   const [authError, setAuthError] = useState<AuthError>(null);
   const [pendingMode, setPendingMode] = useState<GameMode | null>(null);
   const [roundTweets, setRoundTweets] = useState<TweetCandidate[]>([]);
+  const [isLiveTweetRound, setIsLiveTweetRound] = useState(false);
+  const [useArcadeFallback, setUseArcadeFallback] = useState(false);
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
+  const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -57,10 +62,43 @@ export function TweetHuntApp() {
   }, [refreshAuth]);
 
   useEffect(() => {
+    setHighScores(loadHighScores());
+  }, []);
+
+  useEffect(() => {
+    if (stage !== "welcome") return undefined;
+    const options = { capture: true };
+
+    function handleStart() {
+      setStage("title");
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      setStage("title");
+    }
+
+    document.addEventListener("pointerdown", handleStart, options);
+    document.addEventListener("mousedown", handleStart, options);
+    document.addEventListener("click", handleStart, options);
+    document.addEventListener("touchstart", handleStart, options);
+    document.addEventListener("keydown", handleKeyDown, options);
+    return () => {
+      document.removeEventListener("pointerdown", handleStart, options);
+      document.removeEventListener("mousedown", handleStart, options);
+      document.removeEventListener("click", handleStart, options);
+      document.removeEventListener("touchstart", handleStart, options);
+      document.removeEventListener("keydown", handleKeyDown, options);
+    };
+  }, [stage]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const auth = params.get("auth");
     if (!auth) return;
+    setStage("title");
 
     const mode = params.get("mode");
     if (auth === "ok") {
@@ -87,14 +125,18 @@ export function TweetHuntApp() {
     if (!response.ok) {
       throw new Error(data.error ?? "Could not load live tweets from X.");
     }
-    if (!data.tweets?.length) {
-      throw new Error("No live tweets were available for this round.");
-    }
-    const uniqueTweetIds = new Set(data.tweets.map((tweet) => tweet.id));
-    if (uniqueTweetIds.size < TARGETS_PER_ROUND) {
-      throw new Error(`A full round needs ${TARGETS_PER_ROUND} unique live tweets. This account only returned ${uniqueTweetIds.size}.`);
-    }
-    return data.tweets;
+    return data.tweets ?? [];
+  }
+
+  function startArcadeFallback(mode: GameMode, message?: string) {
+    setConfig((current) => ({ ...current, mode }));
+    setRoundTweets([]);
+    setIsLiveTweetRound(false);
+    setUseArcadeFallback(mode !== "C");
+    setLastResult(null);
+    setPendingMode(null);
+    if (message) setTweetLoadError(message);
+    setStage("play");
   }
 
   async function startMode(mode: GameMode) {
@@ -103,7 +145,13 @@ export function TweetHuntApp() {
     setIsLoadingTweets(mode !== "C");
     try {
       const tweets = mode === "C" ? [] : await loadLiveTweetCandidates();
+      if (mode !== "C" && tweets.length === 0) {
+        startArcadeFallback(mode, "No live tweets were available. Switching to arcade scoring with no deletion.");
+        return;
+      }
       setRoundTweets(tweets);
+      setIsLiveTweetRound(mode !== "C");
+      setUseArcadeFallback(false);
       setConfig((current) => ({ ...current, mode }));
       setLastResult(null);
       setPendingMode(null);
@@ -122,6 +170,8 @@ export function TweetHuntApp() {
   function startPracticeMode(mode: GameMode) {
     setConfig((current) => ({ ...current, mode }));
     setRoundTweets([]);
+    setIsLiveTweetRound(false);
+    setUseArcadeFallback(false);
     setLastResult(null);
     setPendingMode(null);
     setStage("play");
@@ -165,30 +215,42 @@ export function TweetHuntApp() {
     setAuthError(null);
     setTweetLoadError(null);
     setRoundTweets([]);
+    setIsLiveTweetRound(false);
+    setUseArcadeFallback(false);
   }
 
   function handleRoundEnd(result: RoundResult) {
+    const { next, isNewBest } = mergeBestScore(result.mode, result.score);
+    if (isNewBest) setHighScores(next);
     setLastResult(result);
     setStage("review");
   }
 
   function nextRound() {
     setRoundNumber((current) => current + 1);
+    if (lastResult?.isLiveTweetRound && lastResult.targetLimit < TARGETS_PER_ROUND) {
+      startArcadeFallback(config.mode, "Live tweets exhausted. Switching to arcade scoring with no deletion.");
+      return;
+    }
+    if (useArcadeFallback && config.mode !== "C") {
+      startArcadeFallback(config.mode);
+      return;
+    }
     void startMode(config.mode);
   }
 
+  function showTitleScreen() {
+    setStage("title");
+  }
+
   const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
+  const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
 
   function renderIntroBanner() {
+    if (!hasIntroBannerContent) return null;
+
     return (
       <aside className="intro-banner" aria-label="About Tweet Hunt">
-        <p>
-          Tweet Hunt is an experimental game from{" "}
-          <a href="https://ericfilkins.com" target="_blank" rel="noopener noreferrer">
-            Eric Filkins
-          </a>
-          . Once authorized, shooting birds in Game A/B immediately deletes real tweets from your linked account.
-        </p>
         {authStatus === "authorized" ? (
           <p className="intro-banner-status">
             Authorized{handle ? ` as @${handle}` : ""}.
@@ -211,6 +273,22 @@ export function TweetHuntApp() {
     );
   }
 
+  if (stage === "welcome") {
+    return (
+      <main className="game-shell" onClick={showTitleScreen} onPointerDown={showTitleScreen}>
+        <div className="game-stage">
+          <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
+            <div className="crt-screen" onClick={showTitleScreen} onPointerDown={showTitleScreen}>
+              <button className="title-screen welcome-screen" type="button" onClick={showTitleScreen} onPointerDown={showTitleScreen} aria-label="Start Tweet Hunt">
+                <img src={welcomeAsset.src} alt="tweet-hunt welcome screen" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (stage === "title") {
     const modalCopy =
       isLoadingTweets
@@ -225,21 +303,30 @@ export function TweetHuntApp() {
       isLoadingTweets
         ? "Loading tweets..."
         : authStatus === "authorized"
-          ? "I understand, start round"
+          ? "Let's delete some tweets"
         : authStatus === "unknown"
           ? "Checking…"
           : "Authorize with X";
 
     const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
 
+    const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
+
     return (
-      <main className="game-shell game-shell-with-banner">
+      <main className={`game-shell${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
         <div className="game-stage">
           <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
             <div className="crt-screen">
               <section className="title-screen" aria-label="tweet-hunt title screen">
                 <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
+                <div className="title-top-score" aria-label={`Top score ${titleTopScore}`}>
+                  {titleTopScore.split("").map((digit, index) => (
+                    <span key={index} className={`title-top-score-slot title-top-score-slot--${index}`}>
+                      {digit}
+                    </span>
+                  ))}
+                </div>
                 <div className="title-options" aria-label="Choose a game mode">
                   <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
                     Game A
@@ -292,11 +379,12 @@ export function TweetHuntApp() {
 
   if (stage === "play") {
     const isClayMode = config.mode === "C";
+    const showIntroBanner = !isClayMode && hasIntroBannerContent;
     return (
-      <main className={`game-shell${isClayMode ? "" : " game-shell-with-banner"}`}>
-        {isClayMode ? null : renderIntroBanner()}
+      <main className={`game-shell${showIntroBanner ? " game-shell-with-banner" : ""}`}>
+        {showIntroBanner ? renderIntroBanner() : null}
         <div className="game-stage">
-          <GameCanvas mode={config.mode} roundNumber={roundNumber} tweets={roundTweets} onRoundEnd={handleRoundEnd} />
+          <GameCanvas mode={config.mode} roundNumber={roundNumber} tweets={roundTweets} isLiveTweetRound={isLiveTweetRound} onRoundEnd={handleRoundEnd} />
         </div>
       </main>
     );

@@ -9,7 +9,7 @@ const DeleteRoundRequest = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = DeleteRoundRequest.safeParse(await request.json());
+  const parsed = DeleteRoundRequest.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid delete round payload", details: parsed.error.flatten() }, { status: 400 });

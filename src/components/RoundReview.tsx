@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
 import type { RoundResult } from "@/game/types";
 
@@ -15,9 +16,14 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
 
   const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet), [result.hits]);
   const isClayRound = result.mode === "C";
+  const isArcadeFallbackRound = !isClayRound && !result.isLiveTweetRound;
+  const isPartialLiveRound = result.isLiveTweetRound && result.targetLimit < 10;
   const clayHits = result.hits.length;
+  const arcadeHits = result.hits.length;
   const currentHit = destructiveHits[currentIndex] ?? null;
   const currentTweet = currentHit?.tweet;
+  const currentEngagement = currentTweet ? totalTweetEngagement(currentTweet) : 0;
+  const showNextRound = result.passed || destructiveHits.length === 0 || isPartialLiveRound;
 
   useEffect(() => {
     setCurrentIndex((index) => Math.min(index, Math.max(destructiveHits.length - 1, 0)));
@@ -55,9 +61,11 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
         <h2>
           {isClayRound
             ? "Clay shooting"
-            : destructiveHits.length > 0
-              ? `Deleted tweets ${currentIndex + 1}/${destructiveHits.length}`
-              : "No tweets deleted"}
+            : isArcadeFallbackRound
+              ? "Arcade scoring"
+              : destructiveHits.length > 0
+                ? `Deleted tweets ${currentIndex + 1}/${destructiveHits.length}`
+                : "No tweets deleted"}
         </h2>
       </header>
 
@@ -73,9 +81,11 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
             <div className="tweet-meta"><span>{formatDate(currentTweet.createdAt)}</span></div>
             <blockquote>{truncate(currentTweet.text, 220)}</blockquote>
             <div className="tweet-meta">
+              <span>{currentEngagement} total engagement</span>
               <span>{currentTweet.likes} likes</span>
               <span>{currentTweet.reposts} reposts</span>
               <span>{currentTweet.replies} replies</span>
+              {currentTweet.quotes ? <span>{currentTweet.quotes} quotes</span> : null}
               {currentHit.deleteStatus ? <span>{currentHit.deleteStatus}</span> : null}
             </div>
           </article>
@@ -84,7 +94,9 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
             <p>
               {isClayRound
                 ? `You shot ${clayHits} clay pigeon${clayHits === 1 ? "" : "s"}. No tweets were deleted.`
-                : "No tweet targets were hit this round."}
+                : isArcadeFallbackRound
+                  ? `You shot ${arcadeHits} arcade bird${arcadeHits === 1 ? "" : "s"}. No tweets were deleted.`
+                  : "No tweet targets were hit this round."}
             </p>
           </div>
         )}
@@ -99,7 +111,7 @@ export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
       <div className="review-footer">
         <div className="button-row">
           <button className="secondary" type="button" onClick={onChangeGame}>Quit</button>
-          {result.passed || destructiveHits.length === 0 ? (
+          {showNextRound ? (
             <button className="primary" type="button" onClick={onNextRound}>Next round</button>
           ) : null}
         </div>

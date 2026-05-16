@@ -15,6 +15,7 @@ export type TweetCandidate = {
   likes: number;
   reposts: number;
   replies: number;
+  quotes?: number;
   source: HuntSource;
   sourceLabel: string;
   url?: string;
@@ -101,6 +102,8 @@ export type RoundResult = {
   escapes: EscapeRecord[];
   shotsFired: number;
   targetsPresented: number;
+  targetLimit: number;
+  isLiveTweetRound: boolean;
   passLine: number;
   passed: boolean;
 };

@@ -1,4 +1,5 @@
 import type { TweetCandidate } from "./types";
+import { totalTweetEngagement } from "./engagement";
 
 export const mockTweets: TweetCandidate[] = [
   {
@@ -221,11 +222,11 @@ export function selectTweetCandidates(config: { source: string; year?: string; k
   }
 
   if (config.source === "low_engagement") {
-    candidates = candidates.filter((tweet) => tweet.likes + tweet.reposts + tweet.replies <= 3);
+    candidates = candidates.filter((tweet) => totalTweetEngagement(tweet) <= 3);
   }
 
   if (config.source === "high_visibility") {
-    candidates = candidates.filter((tweet) => tweet.likes + tweet.reposts + tweet.replies >= 30);
+    candidates = candidates.filter((tweet) => totalTweetEngagement(tweet) >= 30);
   }
 
   if (candidates.length < count) {

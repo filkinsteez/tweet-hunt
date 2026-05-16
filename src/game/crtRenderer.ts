@@ -1,5 +1,5 @@
-export const CRT_WARP_X = 0.022;
-export const CRT_WARP_Y = 0.028;
+export const CRT_WARP_X = 0.017;
+export const CRT_WARP_Y = 0.023;
 
 const VERTEX_SHADER = `
 attribute vec2 aPosition;
@@ -24,8 +24,18 @@ uniform float uWarpY;
 
 varying vec2 vUv;
 
+const vec2 LOGICAL_RASTER_SIZE = vec2(256.0, 240.0);
+
 float random(vec2 value) {
   return fract(sin(dot(value, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+vec3 toLinear(vec3 color) {
+  return pow(max(color, vec3(0.0)), vec3(2.2));
+}
+
+vec3 toDisplay(vec3 color) {
+  return pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
 }
 
 vec2 curveUv(vec2 uv) {
@@ -37,45 +47,85 @@ vec2 curveUv(vec2 uv) {
   return warped * 0.5 + 0.5;
 }
 
-vec3 sampleConverged(vec2 uv) {
-  vec2 fromCenter = uv - 0.5;
-  float edge = smoothstep(0.12, 0.78, length(fromCenter));
-  vec2 direction = normalize(fromCenter + vec2(0.0001));
-  vec2 pixel = direction * edge * 0.65 / uOutputSize;
+vec3 sampleLinear(vec2 uv) {
+  return toLinear(texture2D(uSource, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+}
 
-  float red = texture2D(uSource, uv + pixel).r;
-  float green = texture2D(uSource, uv).g;
-  float blue = texture2D(uSource, uv - pixel).b;
+vec3 sampleHorizontal(vec2 uv) {
+  vec2 texel = vec2(1.0 / uSourceSize.x, 0.0);
+  vec3 center = sampleLinear(uv) * 0.58;
+  vec3 near = (sampleLinear(uv - texel) + sampleLinear(uv + texel)) * 0.17;
+  vec3 far = (sampleLinear(uv - texel * 2.0) + sampleLinear(uv + texel * 2.0)) * 0.04;
+  return center + near + far;
+}
+
+float beamWeight(vec3 color, float distanceFromScanline) {
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  float beamWidth = mix(7.5, 2.4, smoothstep(0.05, 0.9, luma));
+  float beamCore = exp2(-beamWidth * distanceFromScanline * distanceFromScanline);
+  float beamFloor = mix(0.72, 0.92, smoothstep(0.12, 0.85, luma));
+  return beamFloor + beamCore * (1.0 - beamFloor);
+}
+
+vec3 sampleBeam(vec2 uv) {
+  vec2 logical = uv * LOGICAL_RASTER_SIZE;
+  float row = floor(logical.y);
+  float distanceFromRow = logical.y - row - 0.5;
+  float rowUv = (row + 0.5) / LOGICAL_RASTER_SIZE.y;
+  float rowAboveUv = (row - 0.5) / LOGICAL_RASTER_SIZE.y;
+  float rowBelowUv = (row + 1.5) / LOGICAL_RASTER_SIZE.y;
+
+  vec3 rowColor = sampleHorizontal(vec2(uv.x, rowUv));
+  vec3 aboveColor = sampleHorizontal(vec2(uv.x, rowAboveUv));
+  vec3 belowColor = sampleHorizontal(vec2(uv.x, rowBelowUv));
+
+  vec3 color = rowColor * beamWeight(rowColor, distanceFromRow);
+  color += aboveColor * beamWeight(aboveColor, distanceFromRow + 1.0) * 0.32;
+  color += belowColor * beamWeight(belowColor, distanceFromRow - 1.0) * 0.32;
+  return color;
+}
+
+vec3 sampleConvergedBeam(vec2 uv) {
+  vec2 fromCenter = uv - 0.5;
+  float edge = smoothstep(0.1, 0.82, length(fromCenter));
+  vec2 direction = normalize(fromCenter + vec2(0.0001));
+  vec2 pixel = direction * edge * 0.45 / uOutputSize;
+
+  float red = sampleBeam(uv + pixel).r;
+  float green = sampleBeam(uv).g;
+  float blue = sampleBeam(uv - pixel).b;
   return vec3(red, green, blue);
 }
 
-vec3 phosphorMask() {
+vec3 phosphorMask(vec3 color) {
   float triad = mod(gl_FragCoord.x, 3.0);
-  vec3 grille = vec3(0.82);
+  vec3 grille = vec3(0.94);
   if (triad < 1.0) {
-    grille.r = 1.16;
+    grille.r = 1.06;
   } else if (triad < 2.0) {
-    grille.g = 1.13;
+    grille.g = 1.045;
   } else {
-    grille.b = 1.16;
+    grille.b = 1.06;
   }
 
-  float slot = mix(0.88, 1.06, step(0.5, fract(gl_FragCoord.y * 0.25)));
-  return mix(vec3(1.0), grille * slot, 0.30);
+  float slotRow = step(0.5, fract(gl_FragCoord.y / 4.0));
+  float slotColumn = step(0.5, fract((gl_FragCoord.x + slotRow * 3.0) / 6.0));
+  float slot = mix(0.97, 1.02, slotColumn);
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  float strength = mix(0.22, 0.12, smoothstep(0.3, 1.0, luma));
+  return mix(vec3(1.0), grille * slot, strength);
 }
 
-vec3 cheapBloom(vec2 uv) {
+vec3 halation(vec2 uv) {
   vec2 texel = 1.0 / uSourceSize;
-  vec3 sum = texture2D(uSource, uv).rgb * 0.30;
-  sum += texture2D(uSource, uv + texel * vec2(1.5, 0.0)).rgb * 0.12;
-  sum += texture2D(uSource, uv - texel * vec2(1.5, 0.0)).rgb * 0.12;
-  sum += texture2D(uSource, uv + texel * vec2(0.0, 1.5)).rgb * 0.12;
-  sum += texture2D(uSource, uv - texel * vec2(0.0, 1.5)).rgb * 0.12;
-  sum += texture2D(uSource, uv + texel * vec2(1.25, 1.25)).rgb * 0.055;
-  sum += texture2D(uSource, uv + texel * vec2(-1.25, 1.25)).rgb * 0.055;
-  sum += texture2D(uSource, uv + texel * vec2(1.25, -1.25)).rgb * 0.055;
-  sum += texture2D(uSource, uv + texel * vec2(-1.25, -1.25)).rgb * 0.055;
-  return max(sum - vec3(0.58), vec3(0.0));
+  vec3 glow = sampleLinear(uv) * 0.09;
+  glow += (sampleLinear(uv + texel * vec2(2.0, 0.0)) + sampleLinear(uv - texel * vec2(2.0, 0.0))) * 0.045;
+  glow += (sampleLinear(uv + texel * vec2(0.0, 2.0)) + sampleLinear(uv - texel * vec2(0.0, 2.0))) * 0.045;
+  glow += (sampleLinear(uv + texel * vec2(2.0, 2.0)) + sampleLinear(uv + texel * vec2(-2.0, 2.0))) * 0.022;
+  glow += (sampleLinear(uv + texel * vec2(2.0, -2.0)) + sampleLinear(uv + texel * vec2(-2.0, -2.0))) * 0.022;
+  glow += (sampleLinear(uv + texel * vec2(5.0, 0.0)) + sampleLinear(uv - texel * vec2(5.0, 0.0))) * 0.012;
+  glow += (sampleLinear(uv + texel * vec2(0.0, 5.0)) + sampleLinear(uv - texel * vec2(0.0, 5.0))) * 0.012;
+  return max(glow - vec3(0.32), vec3(0.0));
 }
 
 void main() {
@@ -85,29 +135,23 @@ void main() {
     return;
   }
 
-  vec3 color = sampleConverged(uv);
-  vec3 bloom = cheapBloom(uv);
+  vec3 color = sampleConvergedBeam(uv);
+  vec3 bloom = halation(uv);
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  float rasterBreath = 1.0 + sin(uTime * 5.2 + uv.y * 16.0) * 0.004;
 
-  float scanDrift = sin(uTime * 2.1) * 0.018 + sin(uTime * 0.47) * 0.026;
-  float sourceLine = fract(uv.y * uSourceSize.y * 0.5 + scanDrift);
-  float scanBeam = smoothstep(0.08, 0.46, sourceLine) * (1.0 - smoothstep(0.62, 0.98, sourceLine));
-  float luma = max(max(color.r, color.g), color.b);
-  float scanFlicker = 1.0 + sin(uTime * 6.0 + uv.y * 8.0) * 0.035;
-  float scanline = mix(0.64, 1.06, scanBeam) * scanFlicker;
-  float beamBloom = 1.0 + 0.055 * smoothstep(0.45, 1.0, luma);
-
-  color *= scanline * beamBloom;
-  color *= phosphorMask();
-  color += bloom * 0.06;
+  color *= phosphorMask(color);
+  color *= mix(1.0, 1.045, smoothstep(0.16, 0.85, luma)) * rasterBreath;
+  color += bloom * vec3(0.055, 0.05, 0.045);
 
   vec2 centered = vUv * 2.0 - 1.0;
-  float vignette = 1.0 - dot(centered, centered) * 0.035;
-  float glassEdge = mix(0.86, 1.0, smoothstep(1.15, 0.76, length(centered * vec2(0.96, 1.04))));
-  color *= clamp(vignette, 0.90, 1.0) * glassEdge;
+  float vignette = 1.0 - dot(centered, centered) * 0.028;
+  float glassEdge = mix(0.9, 1.0, smoothstep(1.12, 0.78, length(centered * vec2(0.96, 1.04))));
+  color *= clamp(vignette, 0.92, 1.0) * glassEdge;
 
   float noise = random(gl_FragCoord.xy + vec2(uTime * 33.7, uTime * 18.1)) - 0.5;
-  color += noise * 0.006;
-  color = pow(max(color, vec3(0.0)), vec3(0.94));
+  color += noise * 0.002;
+  color = toDisplay(color);
 
   gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }

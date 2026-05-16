@@ -80,7 +80,12 @@ export async function GET(request: NextRequest) {
     return redirectWithAuthError(request, "token-error");
   }
 
-  const token = (await tokenResponse.json()) as TokenResponse;
+  let token: TokenResponse;
+  try {
+    token = (await tokenResponse.json()) as TokenResponse;
+  } catch {
+    return redirectWithAuthError(request, "token-error");
+  }
   if (!token.access_token || !token.expires_in) {
     return redirectWithAuthError(request, "token-error");
   }

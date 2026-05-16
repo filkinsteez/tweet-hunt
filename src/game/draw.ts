@@ -1,4 +1,4 @@
-import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE, HIT_REACTION_DURATION_MS } from "./constants";
+import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE, HIT_REACTION_DURATION_MS, TARGETS_PER_ROUND } from "./constants";
 import { frameAt, spriteAtlas, type AnimationName, type FrameName } from "./atlas";
 import type { BirdColor, TargetEntity } from "./types";
 
@@ -30,8 +30,6 @@ const DOG_TWO_BIRD_WIDTH = 168;
 const DOG_ONE_BIRD_Y = CANVAS_HEIGHT - 365;
 const DOG_TWO_BIRD_Y = CANVAS_HEIGHT - 365;
 const DOG_RETRIEVE_Y_NUDGE = 7;
-const CLAY_ENV_FRAME = { x: 512, y: 0, width: 256, height: 240 };
-const CLAY_HUD_TOP_Y = CANVAS_HEIGHT - 132;
 const CLAY_SPRITE_SCALE = CANVAS_WIDTH / 256;
 const CLAY_TARGET_FRAMES = [
   { x: 4, y: 4, width: 24, height: 16 },
@@ -43,6 +41,97 @@ const CLAY_TARGET_FRAMES = [
   { x: 108, y: 12, width: 8, height: 8 },
   { x: 120, y: 12, width: 8, height: 8 }
 ] satisfies Array<{ x: number; y: number; width: number; height: number }>;
+
+/** Pigeon strip inside clay_hit_counter / duck HIT plate (native px; matches UI_ducks_hit layout). */
+export const CLAY_HIT_HUD_PIGEON_STRIP = { startX: 35, startY: 3, cell: 8 } as const;
+
+/** Fallback crop from clay_target_atlas when clay_filled_pigeon.jpg is unavailable. */
+export const CLAY_HIT_HUD_ATLAS_FRAME = CLAY_TARGET_FRAMES[CLAY_TARGET_FRAMES.length - 1]!;
+
+export type ClayHitHudDrawOptions = {
+  maxHits?: number;
+  /** Omit to use the full intrinsic bounds of `sprite` (e.g. clay_filled_pigeon.jpg). */
+  sourceRect?: { x: number; y: number; width: number; height: number };
+  /**
+   * Extra offset down (canvas px) applied after centering — only if clay_hit_counter rings
+   * sit lower than the duck-HUD baseline (+3 native px).
+   */
+  plateYOffsetCanvas?: number;
+};
+
+function canvasImageIntrinsicSize(source: CanvasImageSource): { w: number; h: number } {
+  if (typeof HTMLImageElement !== "undefined" && source instanceof HTMLImageElement) {
+    return { w: source.naturalWidth, h: source.naturalHeight };
+  }
+  if (typeof HTMLCanvasElement !== "undefined" && source instanceof HTMLCanvasElement) {
+    return { w: source.width, h: source.height };
+  }
+  if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
+    return { w: source.width, h: source.height };
+  }
+  return { w: 8, h: 8 };
+}
+
+/** Draw clay_hit_counter_filled.jpg clipped to the first `hits` pigeon slots (empty plate drawn underneath). */
+export function drawClayHitCounterFilledOverlay(
+  ctx: CanvasRenderingContext2D,
+  filledPlate: CanvasImageSource,
+  hits: number,
+  layoutHit: { x: number; y: number },
+  uiScale: number,
+  options?: { maxHits?: number }
+): void {
+  const maxHits = options?.maxHits ?? TARGETS_PER_ROUND;
+  const n = Math.min(Math.max(hits, 0), maxHits);
+  if (n <= 0) return;
+
+  const { startX, startY, cell } = CLAY_HIT_HUD_PIGEON_STRIP;
+  const stripCell = cell * uiScale;
+  const clipX = layoutHit.x + startX * uiScale;
+  const clipY = layoutHit.y + startY * uiScale;
+  const clipW = n * cell * uiScale;
+  const { w: pw, h: ph } = canvasImageIntrinsicSize(filledPlate);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(clipX, clipY, clipW, stripCell);
+  ctx.clip();
+  ctx.drawImage(filledPlate, 0, 0, pw, ph, layoutHit.x, layoutHit.y, pw * uiScale, ph * uiScale);
+  ctx.restore();
+}
+
+/** Filled hit markers on the clay HUD plate (dedicated sprite or atlas crop — not duck sprites). */
+export function drawClayHitHudIndicators(
+  ctx: CanvasRenderingContext2D,
+  sprite: CanvasImageSource,
+  hits: number,
+  layoutHit: { x: number; y: number },
+  uiScale: number,
+  options?: ClayHitHudDrawOptions
+): void {
+  const maxHits = options?.maxHits ?? TARGETS_PER_ROUND;
+  const { startX, startY, cell: cellNative } = CLAY_HIT_HUD_PIGEON_STRIP;
+  const cell = cellNative * uiScale;
+  const startXCanvas = layoutHit.x + startX * uiScale;
+  const startYCanvas = layoutHit.y + startY * uiScale + (options?.plateYOffsetCanvas ?? 0);
+  const count = Math.min(Math.max(hits, 0), maxHits);
+  const intrinsic = canvasImageIntrinsicSize(sprite);
+  const sr = options?.sourceRect;
+  const sx = sr?.x ?? 0;
+  const sy = sr?.y ?? 0;
+  const sw = sr?.width ?? intrinsic.w;
+  const sh = sr?.height ?? intrinsic.h;
+  const destW = sw * uiScale;
+  const destH = sh * uiScale;
+
+  for (let index = 0; index < count; index += 1) {
+    const slotLeft = startXCanvas + index * cell;
+    const dx = slotLeft + Math.floor((cell - destW) / 2);
+    const dy = startYCanvas + Math.floor((cell - destH) / 2);
+    ctx.drawImage(sprite, sx, sy, sw, sh, dx, dy, destW, destH);
+  }
+}
+
 const INTRO_JUMP_Y_OFFSETS = [
   -45,
   -82,
@@ -74,26 +163,14 @@ export function clearScene(ctx: CanvasRenderingContext2D, backgroundImage?: HTML
   drawBackground(ctx, backgroundImage);
 }
 
-export function drawClayEnvironment(ctx: CanvasRenderingContext2D, envAtlasImage?: HTMLImageElement | null) {
+export function drawClayEnvironment(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {
   ctx.imageSmoothingEnabled = false;
-  if (!envAtlasImage) {
+  if (!backgroundImage) {
     drawBackground(ctx);
     return;
   }
 
-  ctx.drawImage(
-    envAtlasImage,
-    CLAY_ENV_FRAME.x,
-    CLAY_ENV_FRAME.y,
-    CLAY_ENV_FRAME.width,
-    CLAY_ENV_FRAME.height,
-    0,
-    0,
-    CANVAS_WIDTH,
-    CANVAS_HEIGHT
-  );
-  ctx.fillStyle = "#050508";
-  ctx.fillRect(0, CLAY_HUD_TOP_Y, CANVAS_WIDTH, CANVAS_HEIGHT - CLAY_HUD_TOP_Y);
+  ctx.drawImage(backgroundImage, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
 export function drawBackground(ctx: CanvasRenderingContext2D, backgroundImage?: HTMLImageElement | null) {

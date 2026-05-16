@@ -78,6 +78,8 @@ button {
 
 .title-screen {
   position: relative;
+  container-type: inline-size;
+  container-name: title-screen;
   width: min(960px, calc(100vw - 56px), calc((100dvh - 56px) * 878 / 767));
   margin: 0 auto;
   border: 4px solid var(--stroke);
@@ -106,6 +108,13 @@ button {
   width: 100%;
   height: 100%;
   image-rendering: pixelated;
+}
+
+.welcome-screen {
+  display: block;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
 }
 
 .title-options {
@@ -159,6 +168,64 @@ button {
 
 .title-option-c {
   top: 70.5%;
+}
+
+/* Digits overlay the "TOP SCORE =" boxes baked into title.jpg (pink / blue pattern). */
+.title-top-score {
+  position: absolute;
+  z-index: 1;
+  right: 7%;
+  bottom: 6%;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  width: 29%;
+  gap: 0.2%;
+  pointer-events: none;
+  font-family: var(--tweet-font);
+}
+
+.title-top-score-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(6px, 5.5cqi, 18px);
+  line-height: 1;
+  padding: 0.08em 0;
+  color: #7aff8a;
+  text-shadow:
+    0 0 0 #0a1608,
+    1px 0 0 #0a1608,
+    -1px 0 0 #0a1608,
+    0 1px 0 #0a1608,
+    0 -1px 0 #0a1608;
+}
+
+/* Match colored placeholders in title art (left → right). */
+.title-top-score-slot--0 {
+  background: #d838c8;
+}
+
+.title-top-score-slot--1 {
+  background: #3868d8;
+}
+
+.title-top-score-slot--2 {
+  background: #d838c8;
+}
+
+.title-top-score-slot--3 {
+  background: #d838c8;
+}
+
+.title-top-score-slot--4 {
+  background: #3868d8;
+}
+
+.title-top-score-slot--5 {
+  background: #3868d8;
 }
 
 .grid {
@@ -246,7 +313,8 @@ button {
   height: 53.2%;
   overflow: hidden;
   background: #02030a;
-  border-radius: 6% / 6%;
+  /* Light rounding only — large % values clip the picture far inside the bezel art. */
+  border-radius: 4% / 4.5%;
   isolation: isolate;
 }
 
@@ -257,9 +325,9 @@ button {
   z-index: 20;
   pointer-events: none;
   background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, rgba(255, 255, 255, 0.035) 1px 2px, transparent 2px 4px),
-    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.10) 0 1px, rgba(35, 255, 120, 0.08) 1px 2px, rgba(70, 120, 255, 0.10) 2px 3px);
-  opacity: 0.42;
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.06) 0 1px, rgba(255, 255, 255, 0.012) 1px 2px, transparent 2px 6px),
+    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.028) 0 1px, rgba(35, 255, 120, 0.022) 1px 2px, rgba(70, 120, 255, 0.028) 2px 3px);
+  opacity: 0.09;
 }
 
 .crt-screen::after {
@@ -269,8 +337,8 @@ button {
   z-index: 21;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 50% 42%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 35%, rgba(0, 0, 0, 0.16) 78%, rgba(0, 0, 0, 0.38) 100%),
-    linear-gradient(115deg, rgba(255, 255, 255, 0.07), transparent 24%, transparent 74%, rgba(255, 255, 255, 0.035));
+    radial-gradient(ellipse at 50% 42%, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01) 35%, rgba(0, 0, 0, 0.09) 78%, rgba(0, 0, 0, 0.22) 100%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.04), transparent 24%, transparent 74%, rgba(255, 255, 255, 0.02));
   mix-blend-mode: screen;
 }
 
@@ -335,6 +403,15 @@ button {
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
+}
+
+.micro-reveal .micro-reveal-metrics {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 
 .review-crt .crt-screen {
@@ -564,6 +641,7 @@ button {
 .intro-banner a {
   color: var(--accent);
   text-decoration: underline;
+  text-decoration-color: #fff;
   text-underline-offset: 3px;
   font-weight: 500;
 }
