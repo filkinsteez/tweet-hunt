@@ -275,12 +275,15 @@ export function TweetHuntApp() {
 
   if (stage === "welcome") {
     return (
-      <main className="game-shell" onClick={showTitleScreen} onPointerDown={showTitleScreen}>
+      <main className="game-shell" onClickCapture={showTitleScreen} onPointerDownCapture={showTitleScreen}>
         <div className="game-stage">
           <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
-            <div className="crt-screen" onClick={showTitleScreen} onPointerDown={showTitleScreen}>
-              <button className="title-screen welcome-screen" type="button" onClick={showTitleScreen} onPointerDown={showTitleScreen} aria-label="Start Tweet Hunt">
+            <div className="crt-screen">
+              <div className="title-screen welcome-screen" aria-hidden="true">
                 <img src={welcomeAsset.src} alt="tweet-hunt welcome screen" />
+              </div>
+              <button className="welcome-start-button" type="button" onClick={showTitleScreen} onPointerUp={showTitleScreen} aria-label="Start Tweet Hunt">
+                Start Tweet Hunt
               </button>
             </div>
           </div>
@@ -380,7 +383,14 @@ export function TweetHuntApp() {
       <main className={`game-shell${showIntroBanner ? " game-shell-with-banner" : ""}`}>
         {showIntroBanner ? renderIntroBanner() : null}
         <div className="game-stage">
-          <GameCanvas mode={config.mode} roundNumber={roundNumber} tweets={roundTweets} isLiveTweetRound={isLiveTweetRound} onRoundEnd={handleRoundEnd} />
+          <GameCanvas
+            mode={config.mode}
+            roundNumber={roundNumber}
+            tweets={roundTweets}
+            isLiveTweetRound={isLiveTweetRound}
+            onRoundEnd={handleRoundEnd}
+            onQuit={() => setStage("title")}
+          />
         </div>
       </main>
     );

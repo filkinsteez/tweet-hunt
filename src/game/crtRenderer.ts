@@ -53,17 +53,17 @@ vec3 sampleLinear(vec2 uv) {
 
 vec3 sampleHorizontal(vec2 uv) {
   vec2 texel = vec2(1.0 / uSourceSize.x, 0.0);
-  vec3 center = sampleLinear(uv) * 0.58;
-  vec3 near = (sampleLinear(uv - texel) + sampleLinear(uv + texel)) * 0.17;
-  vec3 far = (sampleLinear(uv - texel * 2.0) + sampleLinear(uv + texel * 2.0)) * 0.04;
+  vec3 center = sampleLinear(uv) * 0.74;
+  vec3 near = (sampleLinear(uv - texel) + sampleLinear(uv + texel)) * 0.11;
+  vec3 far = (sampleLinear(uv - texel * 2.0) + sampleLinear(uv + texel * 2.0)) * 0.02;
   return center + near + far;
 }
 
 float beamWeight(vec3 color, float distanceFromScanline) {
   float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-  float beamWidth = mix(7.5, 2.4, smoothstep(0.05, 0.9, luma));
+  float beamWidth = mix(9.4, 3.1, smoothstep(0.05, 0.9, luma));
   float beamCore = exp2(-beamWidth * distanceFromScanline * distanceFromScanline);
-  float beamFloor = mix(0.72, 0.92, smoothstep(0.12, 0.85, luma));
+  float beamFloor = mix(0.64, 0.88, smoothstep(0.12, 0.85, luma));
   return beamFloor + beamCore * (1.0 - beamFloor);
 }
 
@@ -80,8 +80,8 @@ vec3 sampleBeam(vec2 uv) {
   vec3 belowColor = sampleHorizontal(vec2(uv.x, rowBelowUv));
 
   vec3 color = rowColor * beamWeight(rowColor, distanceFromRow);
-  color += aboveColor * beamWeight(aboveColor, distanceFromRow + 1.0) * 0.32;
-  color += belowColor * beamWeight(belowColor, distanceFromRow - 1.0) * 0.32;
+  color += aboveColor * beamWeight(aboveColor, distanceFromRow + 1.0) * 0.18;
+  color += belowColor * beamWeight(belowColor, distanceFromRow - 1.0) * 0.18;
   return color;
 }
 
@@ -118,14 +118,12 @@ vec3 phosphorMask(vec3 color) {
 
 vec3 halation(vec2 uv) {
   vec2 texel = 1.0 / uSourceSize;
-  vec3 glow = sampleLinear(uv) * 0.09;
-  glow += (sampleLinear(uv + texel * vec2(2.0, 0.0)) + sampleLinear(uv - texel * vec2(2.0, 0.0))) * 0.045;
-  glow += (sampleLinear(uv + texel * vec2(0.0, 2.0)) + sampleLinear(uv - texel * vec2(0.0, 2.0))) * 0.045;
-  glow += (sampleLinear(uv + texel * vec2(2.0, 2.0)) + sampleLinear(uv + texel * vec2(-2.0, 2.0))) * 0.022;
-  glow += (sampleLinear(uv + texel * vec2(2.0, -2.0)) + sampleLinear(uv + texel * vec2(-2.0, -2.0))) * 0.022;
-  glow += (sampleLinear(uv + texel * vec2(5.0, 0.0)) + sampleLinear(uv - texel * vec2(5.0, 0.0))) * 0.012;
-  glow += (sampleLinear(uv + texel * vec2(0.0, 5.0)) + sampleLinear(uv - texel * vec2(0.0, 5.0))) * 0.012;
-  return max(glow - vec3(0.32), vec3(0.0));
+  vec3 glow = sampleLinear(uv) * 0.055;
+  glow += (sampleLinear(uv + texel * vec2(2.0, 0.0)) + sampleLinear(uv - texel * vec2(2.0, 0.0))) * 0.026;
+  glow += (sampleLinear(uv + texel * vec2(0.0, 2.0)) + sampleLinear(uv - texel * vec2(0.0, 2.0))) * 0.026;
+  glow += (sampleLinear(uv + texel * vec2(2.0, 2.0)) + sampleLinear(uv + texel * vec2(-2.0, 2.0))) * 0.012;
+  glow += (sampleLinear(uv + texel * vec2(2.0, -2.0)) + sampleLinear(uv + texel * vec2(-2.0, -2.0))) * 0.012;
+  return max(glow - vec3(0.38), vec3(0.0));
 }
 
 void main() {

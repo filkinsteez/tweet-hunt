@@ -152,6 +152,7 @@ type Props = {
   tweets: TweetCandidate[];
   isLiveTweetRound: boolean;
   onRoundEnd: (result: RoundResult) => void;
+  onQuit: () => void;
 };
 
 const COLORS: BirdColor[] = ["blue", "green", "red"];
@@ -766,7 +767,7 @@ function isTargetUnresolved(target: TargetEntity) {
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd }: Props) {
+export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
@@ -786,12 +787,15 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const rafRef = useRef<number | null>(null);
   const mouseRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
   const lastHudUpdateRef = useRef(0);
+  const pausedRef = useRef(false);
+  const pauseStartedAtRef = useRef<number | null>(null);
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const canvas = crtCanvasRef.current;
@@ -840,6 +844,58 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   useEffect(() => {
     tweetsRef.current = tweets;
   }, [tweets]);
+
+  const setPausedState = useCallback((nextPaused: boolean) => {
+    if (nextPaused) {
+      if (pausedRef.current) return;
+      pausedRef.current = true;
+      pauseStartedAtRef.current = performance.now();
+      setPaused(true);
+      return;
+    }
+
+    if (!pausedRef.current) return;
+
+    const pauseStartedAt = pauseStartedAtRef.current;
+    const pausedDurationMs = pauseStartedAt === null ? 0 : performance.now() - pauseStartedAt;
+    const state = stateRef.current;
+
+    if (pausedDurationMs > 0 && state) {
+      state.phaseStartedAtMs += pausedDurationMs;
+      state.volleyStartedAtMs += pausedDurationMs;
+      if (state.lastFrameAtMs !== undefined) state.lastFrameAtMs += pausedDurationMs;
+      if (state.retrieveDogTriggeredAtMs !== undefined) state.retrieveDogTriggeredAtMs += pausedDurationMs;
+
+      for (const target of state.targets) {
+        target.createdAtMs += pausedDurationMs;
+        if (target.escapedAtMs !== undefined) target.escapedAtMs += pausedDurationMs;
+        if (target.hitAtMs !== undefined) target.hitAtMs += pausedDurationMs;
+      }
+
+      for (const reveal of state.scoreReveals) {
+        reveal.expiresAtMs += pausedDurationMs;
+      }
+
+      setMicroReveal((current) => (current ? { ...current, expiresAt: current.expiresAt + pausedDurationMs } : current));
+    }
+
+    pausedRef.current = false;
+    pauseStartedAtRef.current = null;
+    setPaused(false);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const state = stateRef.current;
+      if (!state || state.phase === "ended") return;
+      event.preventDefault();
+      setPausedState(!pausedRef.current);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setPausedState]);
 
   useEffect(() => {
     const image = new Image();
@@ -1026,6 +1082,9 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       state.phase = "intro";
       state.phaseStartedAtMs = now;
     }
+    pausedRef.current = false;
+    pauseStartedAtRef.current = null;
+    setPaused(false);
     stateRef.current = state;
 
     return () => {
@@ -1033,11 +1092,12 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     };
   }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound]);
 
-  const draw = useCallback((timeMs: number) => {
+  const draw = useCallback((frameTimeMs: number) => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
     const state = stateRef.current;
     if (!canvas || !image || !state) return;
+    const timeMs = pausedRef.current && pauseStartedAtRef.current !== null ? pauseStartedAtRef.current : frameTimeMs;
     const introDogElapsedMs = timeMs - state.phaseStartedAtMs;
     const introDogBehindGrass = state.phase === "intro" && isIntroDogBehindGrass(introDogElapsedMs);
 
@@ -1051,11 +1111,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       clearScene(ctx, backgroundImageRef.current);
     }
 
-    if (state.phase === "intro" && timeMs - state.phaseStartedAtMs >= ROUND_INTRO_DURATION_MS) {
+    if (!pausedRef.current && state.phase === "intro" && timeMs - state.phaseStartedAtMs >= ROUND_INTRO_DURATION_MS) {
       startNextVolley(state, tweetsRef.current, timeMs);
     }
 
-    if (state.phase === "active" || state.phase === "resolve") {
+    if (!pausedRef.current && (state.phase === "active" || state.phase === "resolve")) {
       if (state.lastFrameAtMs === undefined) state.lastFrameAtMs = timeMs;
       state.fixedStepAccumulatorMs += Math.min(timeMs - state.lastFrameAtMs, 250);
       state.lastFrameAtMs = timeMs;
@@ -1128,7 +1188,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
           ((resolveDogState === "laugh" && laughDogAgeMs >= laughDogSequenceMs) ||
             (resolveDogState !== "laugh" && timeMs - state.phaseStartedAtMs > RESOLVE_DELAY_MS))));
 
-    if (canAdvanceResolve) {
+    if (!pausedRef.current && canAdvanceResolve) {
       if (state.targetsPresented >= state.targetLimit) {
         finishRound(state, onRoundEndRef.current);
       } else {
@@ -1223,6 +1283,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   }
 
   function handleShot(event: React.MouseEvent<HTMLElement>) {
+    if (pausedRef.current) return;
     const state = stateRef.current;
     if (!state || state.phase !== "active" || state.shotsRemaining <= 0) return;
 
@@ -1282,6 +1343,15 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
   }
 
+  function handleResume() {
+    setPausedState(false);
+  }
+
+  function handleQuit() {
+    setPausedState(false);
+    onQuit();
+  }
+
   const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
 
   return (
@@ -1317,6 +1387,22 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
                 <span>{microReveal.comments} comments</span>
                 <span>{microReveal.retweets} retweets</span>
               </p>
+            </div>
+          </div>
+        ) : null}
+        {paused ? (
+          <div className="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+            <div className="pause-panel">
+              <h2 id="pause-title">Paused</h2>
+              <p>Press Escape to resume.</p>
+              <div className="pause-actions">
+                <button type="button" className="primary" onClick={handleResume}>
+                  Resume
+                </button>
+                <button type="button" className="secondary" onClick={handleQuit}>
+                  Quit
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
