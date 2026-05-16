@@ -93,6 +93,7 @@ import {
 } from "@/game/draw";
 import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
+import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, drawWrappedPixelText, pointInRect, type Rect } from "@/game/uiDraw";
 import type { BirdColor, GameMode, HitRecord, RoundResult, TargetEntity, TweetCandidate } from "@/game/types";
 
 type RuntimePhase = "boot" | "intro" | "active" | "resolve" | "ended";
@@ -199,6 +200,11 @@ const HUD_LAYOUT = {
   hit: { x: 198, y: CANVAS_HEIGHT - 92 },
   score: { x: 707, y: CANVAS_HEIGHT - 92 }
 };
+const BUTTON_TEXT_SIZE = 16;
+const MICRO_REVEAL_PANEL: Rect = { x: 150, y: 22, width: 660, height: 126 };
+const PAUSE_PANEL: Rect = { x: 236, y: 178, width: 488, height: 332 };
+const PAUSE_QUIT_BUTTON: Rect = { x: 292, y: 402, width: 168, height: 56 };
+const PAUSE_RESUME_BUTTON: Rect = { x: 500, y: 402, width: 168, height: 56 };
 
 function roundUiX(roundNumber: number) {
   const shotsWidth = 29 * UI_SCALE;
@@ -410,6 +416,72 @@ function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, ti
     ctx.fillText(text, x, y);
   }
   ctx.restore();
+}
+
+function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal) {
+  if (!reveal) return;
+
+  drawPixelBeveledPanel(ctx, MICRO_REVEAL_PANEL, {
+    fill: "rgba(10, 10, 14, 0.9)",
+    stroke: "#e79a1b",
+    lineWidth: 4,
+    bevel: 12
+  });
+
+  const textX = MICRO_REVEAL_PANEL.x + 24;
+  const textY = MICRO_REVEAL_PANEL.y + 20;
+  const textWidth = MICRO_REVEAL_PANEL.width - 48;
+  const lines = drawWrappedPixelText(ctx, reveal.text, textX, textY, textWidth, 23, {
+    size: 12,
+    color: "#fff9e8"
+  });
+  const metricsY = Math.min(textY + lines * 23 + 14, MICRO_REVEAL_PANEL.y + MICRO_REVEAL_PANEL.height - 30);
+  drawPixelText(ctx, `${reveal.likes} likes  ${reveal.comments} comments  ${reveal.retweets} retweets`, CANVAS_WIDTH / 2, metricsY, {
+    size: 10,
+    color: "#e79a1b",
+    align: "center"
+  });
+}
+
+function drawPauseButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, primary = false) {
+  drawPixelPanel(ctx, rect, {
+    fill: primary ? "#e79a1b" : "#1c1c24",
+    stroke: "#08080c",
+    lineWidth: 4
+  });
+  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
+    size: BUTTON_TEXT_SIZE,
+    color: primary ? "#09090d" : "#fff9e8",
+    align: "center",
+    baseline: "middle",
+    shadow: false
+  });
+}
+
+function drawPauseOverlay(ctx: CanvasRenderingContext2D) {
+  ctx.save();
+  ctx.fillStyle = "rgba(2, 3, 8, 0.62)";
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.restore();
+
+  drawPixelBeveledPanel(ctx, PAUSE_PANEL, {
+    fill: "rgba(5, 7, 16, 0.96)",
+    stroke: "#e79a1b",
+    lineWidth: 5,
+    bevel: 18
+  });
+  drawPixelText(ctx, "PAUSED", CANVAS_WIDTH / 2, PAUSE_PANEL.y + 52, {
+    size: 30,
+    color: "#e79a1b",
+    align: "center"
+  });
+  drawPixelText(ctx, "Press Escape to resume.", CANVAS_WIDTH / 2, PAUSE_PANEL.y + 124, {
+    size: 12,
+    color: "#b9ad9a",
+    align: "center"
+  });
+  drawPauseButton(ctx, PAUSE_RESUME_BUTTON, "RESUME", true);
+  drawPauseButton(ctx, PAUSE_QUIT_BUTTON, "QUIT");
 }
 
 function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
@@ -794,6 +866,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
+  const microRevealRef = useRef<MicroReveal>(null);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const [paused, setPaused] = useState(false);
 
@@ -844,6 +917,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   useEffect(() => {
     tweetsRef.current = tweets;
   }, [tweets]);
+
+  useEffect(() => {
+    microRevealRef.current = microReveal;
+  }, [microReveal]);
 
   const setPausedState = useCallback((nextPaused: boolean) => {
     if (nextPaused) {
@@ -1237,8 +1314,12 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
     }
     drawScoreReveals(ctx, state, timeMs);
-    if (state.phase === "active") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
     drawSpriteHud(ctx, state, uiImagesRef.current, clayTargetAtlasRef.current);
+    drawMicroRevealPanel(ctx, microRevealRef.current);
+    if (pausedRef.current) {
+      drawPauseOverlay(ctx);
+    }
+    if (state.phase !== "ended") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
     crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
@@ -1343,6 +1424,20 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
   }
 
+  function handleCanvasClick(event: React.MouseEvent<HTMLElement>) {
+    if (pausedRef.current) {
+      const point = resolveCanvasPosition(event);
+      if (pointInRect(point, PAUSE_RESUME_BUTTON)) {
+        handleResume();
+      } else if (pointInRect(point, PAUSE_QUIT_BUTTON)) {
+        handleQuit();
+      }
+      return;
+    }
+
+    handleShot(event);
+  }
+
   function handleResume() {
     setPausedState(false);
   }
@@ -1356,7 +1451,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
 
   return (
     <div
-      className={`canvas-wrap crt-cabinet${crtUnavailable ? " crt-fallback" : ""}`}
+      className={`canvas-wrap crt-cabinet play-crt${paused ? " play-paused" : ""}${crtUnavailable ? " crt-fallback" : ""}`}
       style={crtStyle}
       aria-label={`${modeLabel(mode)} playfield`}
     >
@@ -1367,7 +1462,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
           onMouseMove={handleMouseMove}
-          onClick={handleShot}
+          onClick={handleCanvasClick}
         />
         <canvas
           ref={crtCanvasRef}
@@ -1375,37 +1470,12 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
           onMouseMove={handleMouseMove}
-          onClick={handleShot}
+          onClick={handleCanvasClick}
           aria-hidden={crtUnavailable}
         />
-        {microReveal ? (
-          <div className="hud-overlay" aria-hidden="true">
-            <div className="micro-reveal">
-              <p>{microReveal.text}</p>
-              <p className="micro-reveal-metrics">
-                <span>{microReveal.likes} likes</span>
-                <span>{microReveal.comments} comments</span>
-                <span>{microReveal.retweets} retweets</span>
-              </p>
-            </div>
-          </div>
-        ) : null}
-        {paused ? (
-          <div className="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
-            <div className="pause-panel">
-              <h2 id="pause-title">Paused</h2>
-              <p>Press Escape to resume.</p>
-              <div className="pause-actions">
-                <button type="button" className="primary" onClick={handleResume}>
-                  Resume
-                </button>
-                <button type="button" className="secondary" onClick={handleQuit}>
-                  Quit
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <div className="screen-reader-only" aria-live="polite">
+          {paused ? "Paused. Press Escape to resume, or click Resume or Quit on the game screen." : microReveal?.text ?? ""}
+        </div>
       </div>
     </div>
   );

@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import crtAsset from "../../Assets/CRT/crt_edited.png";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
+import titleSelectionAsset from "../../Assets/Sprites/UI/UI_title_selection.jpg";
 import welcomeAsset from "../../Assets/Sprites/UI/welcome_screen.jpg";
+import { ArcadeRoundReview } from "./ArcadeRoundReview";
+import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { GameCanvas } from "./GameCanvas";
-import { RoundReview } from "./RoundReview";
 import { TARGETS_PER_ROUND } from "@/game/constants";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
+import { drawFullscreenImage, drawPixelText } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
 
 type Stage = "welcome" | "title" | "play" | "review";
@@ -24,6 +26,14 @@ const AUTH_ERROR_COPY: Record<NonNullable<AuthError>, string> = {
   "missing-config": "X OAuth isn't configured on the server. Add X_CLIENT_ID, X_CLIENT_SECRET, and X_REDIRECT_URI."
 };
 
+const TITLE_TOP_SCORE = { x: 548, y: 590, size: 24 };
+const TITLE_SELECTION_SIZE = { width: 32, height: 24 };
+const TITLE_SELECTION_POSITIONS: Record<GameMode, { x: number; y: number }> = {
+  A: { x: 178, y: 414 },
+  B: { x: 178, y: 464 },
+  C: { x: 178, y: 514 }
+};
+
 export function TweetHuntApp() {
   const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
@@ -33,6 +43,7 @@ export function TweetHuntApp() {
   const [handle, setHandle] = useState<string | null>(null);
   const [authError, setAuthError] = useState<AuthError>(null);
   const [pendingMode, setPendingMode] = useState<GameMode | null>(null);
+  const [activeTitleMode, setActiveTitleMode] = useState<GameMode | null>(null);
   const [roundTweets, setRoundTweets] = useState<TweetCandidate[]>([]);
   const [isLiveTweetRound, setIsLiveTweetRound] = useState(false);
   const [useArcadeFallback, setUseArcadeFallback] = useState(false);
@@ -243,8 +254,35 @@ export function TweetHuntApp() {
     setStage("title");
   }
 
-  const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
   const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
+  const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
+  const titleSelectionMode = pendingMode ?? activeTitleMode;
+  const welcomeScreenImages = useMemo(() => ({ background: welcomeAsset.src }), []);
+  const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src }), []);
+  const drawWelcomeScreen = useCallback(({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
+    drawFullscreenImage(ctx, images.background);
+  }, []);
+  const drawTitleScreen = useCallback(
+    ({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
+      drawFullscreenImage(ctx, images.background);
+      drawPixelText(ctx, titleTopScore, TITLE_TOP_SCORE.x, TITLE_TOP_SCORE.y, {
+        size: TITLE_TOP_SCORE.size,
+        color: "#fff9e8"
+      });
+
+      if (titleSelectionMode) {
+        const position = TITLE_SELECTION_POSITIONS[titleSelectionMode];
+        const selection = images.selection;
+        if (selection) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(selection, position.x, position.y, TITLE_SELECTION_SIZE.width, TITLE_SELECTION_SIZE.height);
+        } else {
+          drawPixelText(ctx, ">", position.x, position.y - 2, { size: 24, color: "#fff9e8" });
+        }
+      }
+    },
+    [titleSelectionMode, titleTopScore]
+  );
 
   function renderIntroBanner() {
     if (!hasIntroBannerContent) return null;
@@ -277,16 +315,11 @@ export function TweetHuntApp() {
     return (
       <main className="game-shell" onClickCapture={showTitleScreen} onPointerDownCapture={showTitleScreen}>
         <div className="game-stage">
-          <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
-            <div className="crt-screen">
-              <div className="title-screen welcome-screen" aria-hidden="true">
-                <img src={welcomeAsset.src} alt="tweet-hunt welcome screen" />
-              </div>
-              <button className="welcome-start-button" type="button" onClick={showTitleScreen} onPointerUp={showTitleScreen} aria-label="Start Tweet Hunt">
-                Start Tweet Hunt
-              </button>
-            </div>
-          </div>
+          <ArcadeScreenCanvas className="title-crt" ariaLabel="tweet-hunt welcome screen" images={welcomeScreenImages} drawFrame={drawWelcomeScreen}>
+            <button className="welcome-start-button" type="button" onClick={showTitleScreen} onPointerUp={showTitleScreen} aria-label="Start Tweet Hunt">
+              Start Tweet Hunt
+            </button>
+          </ArcadeScreenCanvas>
         </div>
       </main>
     );
@@ -313,33 +346,47 @@ export function TweetHuntApp() {
 
     const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
 
-    const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
-
     return (
       <main className={`game-shell${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
         <div className="game-stage">
-          <div className="canvas-wrap crt-cabinet title-crt" style={crtStyle}>
-            <div className="crt-screen">
-              <section className="title-screen" aria-label="tweet-hunt title screen">
-                <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
-                <div className="title-top-score" aria-label={`Top score ${titleTopScore}`}>
-                  {titleTopScore}
-                </div>
-                <div className="title-options" aria-label="Choose a game mode">
-                  <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
-                    Game A
-                  </button>
-                  <button className="title-option title-option-b" type="button" onClick={() => selectTitleMode("B")}>
-                    Game B
-                  </button>
-                  <button className="title-option title-option-c" type="button" onClick={() => selectTitleMode("C")}>
-                    Game C
-                  </button>
-                </div>
-              </section>
+          <ArcadeScreenCanvas className="title-crt" ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
+            <div className="title-hit-regions" aria-label="Choose a game mode">
+              <button
+                className="title-option title-option-a"
+                type="button"
+                onPointerEnter={() => setActiveTitleMode("A")}
+                onPointerLeave={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
+                onFocus={() => setActiveTitleMode("A")}
+                onBlur={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
+                onClick={() => selectTitleMode("A")}
+              >
+                Game A
+              </button>
+              <button
+                className="title-option title-option-b"
+                type="button"
+                onPointerEnter={() => setActiveTitleMode("B")}
+                onPointerLeave={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
+                onFocus={() => setActiveTitleMode("B")}
+                onBlur={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
+                onClick={() => selectTitleMode("B")}
+              >
+                Game B
+              </button>
+              <button
+                className="title-option title-option-c"
+                type="button"
+                onPointerEnter={() => setActiveTitleMode("C")}
+                onPointerLeave={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
+                onFocus={() => setActiveTitleMode("C")}
+                onBlur={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
+                onClick={() => selectTitleMode("C")}
+              >
+                Game C
+              </button>
             </div>
-          </div>
+          </ArcadeScreenCanvas>
         </div>
 
         {pendingMode ? (
@@ -354,7 +401,9 @@ export function TweetHuntApp() {
               <h2 id="auth-modal-title">Game {pendingMode}</h2>
               <p>{modalCopy}</p>
               <p className="auth-modal-hint">
-                Want to play without consequences? Play <strong>Clay Shooting</strong> mode.
+                Want to play without consequences?
+                <br />
+                Play <strong>Clay Shooting</strong> mode.
               </p>
               <div className="auth-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
@@ -399,17 +448,13 @@ export function TweetHuntApp() {
   return (
     <main className="game-shell">
       <div className="game-stage">
-        <div className="canvas-wrap crt-cabinet review-crt" style={crtStyle}>
-          <div className="crt-screen">
-            {stage === "review" && lastResult ? (
-              <RoundReview
-                result={lastResult}
-                onNextRound={nextRound}
-                onChangeGame={() => setStage("title")}
-              />
-            ) : null}
-          </div>
-        </div>
+        {stage === "review" && lastResult ? (
+          <ArcadeRoundReview
+            result={lastResult}
+            onNextRound={nextRound}
+            onChangeGame={() => setStage("title")}
+          />
+        ) : null}
       </div>
     </main>
   );
