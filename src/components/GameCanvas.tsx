@@ -1271,7 +1271,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       });
       setMicroReveal({
         id: `${hit.id}_${now}`,
-        text: `Deleting: ${truncate(hit.tweet.text, 128)}`,
+        text: `"${truncate(hit.tweet.text, 128)}"`,
         date: formatDate(hit.tweet.createdAt),
         points: hit.points,
         likes: hit.tweet.likes,

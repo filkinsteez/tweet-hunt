@@ -170,62 +170,30 @@ button {
   top: 70.5%;
 }
 
-/* Digits overlay the "TOP SCORE =" boxes baked into title.jpg (pink / blue pattern). */
+/* Align the dynamic score with the "TOP SCORE =" label in title.jpg. */
 .title-top-score {
   position: absolute;
   z-index: 1;
-  right: 7%;
-  bottom: 6%;
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  width: 29%;
-  gap: 0.2%;
+  left: 57.2%;
+  bottom: 12.5%;
+  width: 6.8em;
+  padding: 0.08em 0.22em 0.1em;
+  background: #050508;
+  color: #fff9e8;
   pointer-events: none;
   font-family: var(--tweet-font);
-}
-
-.title-top-score-slot {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: clamp(6px, 5.5cqi, 18px);
-  line-height: 1;
-  padding: 0.08em 0;
-  color: #7aff8a;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1.05;
+  text-align: left;
+  white-space: nowrap;
   text-shadow:
-    0 0 0 #0a1608,
-    1px 0 0 #0a1608,
-    -1px 0 0 #0a1608,
-    0 1px 0 #0a1608,
-    0 -1px 0 #0a1608;
-}
-
-/* Match colored placeholders in title art (left → right). */
-.title-top-score-slot--0 {
-  background: #d838c8;
-}
-
-.title-top-score-slot--1 {
-  background: #3868d8;
-}
-
-.title-top-score-slot--2 {
-  background: #d838c8;
-}
-
-.title-top-score-slot--3 {
-  background: #d838c8;
-}
-
-.title-top-score-slot--4 {
-  background: #3868d8;
-}
-
-.title-top-score-slot--5 {
-  background: #3868d8;
+    0 0 0 #000,
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 1px 0 #000,
+    0 -1px 0 #000;
 }
 
 .grid {

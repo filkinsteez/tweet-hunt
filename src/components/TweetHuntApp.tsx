@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import crtAsset from "../../Assets/CRT/crt_edited.png";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
-import welcomeAsset from "../../Assets/Sprites/UI/welcome_screen.png";
+import welcomeAsset from "../../Assets/Sprites/UI/welcome_screen.jpg";
 import { GameCanvas } from "./GameCanvas";
 import { RoundReview } from "./RoundReview";
 import { TARGETS_PER_ROUND } from "@/game/constants";
@@ -321,11 +321,7 @@ export function TweetHuntApp() {
               <section className="title-screen" aria-label="tweet-hunt title screen">
                 <img src={titleAsset.src} alt="tweet-hunt title screen with Game A, Game B, and Game C options" />
                 <div className="title-top-score" aria-label={`Top score ${titleTopScore}`}>
-                  {titleTopScore.split("").map((digit, index) => (
-                    <span key={index} className={`title-top-score-slot title-top-score-slot--${index}`}>
-                      {digit}
-                    </span>
-                  ))}
+                  {titleTopScore}
                 </div>
                 <div className="title-options" aria-label="Choose a game mode">
                   <button className="title-option title-option-a" type="button" onClick={() => selectTitleMode("A")}>
@@ -355,7 +351,7 @@ export function TweetHuntApp() {
               <h2 id="auth-modal-title">Game {pendingMode}</h2>
               <p>{modalCopy}</p>
               <p className="auth-modal-hint">
-                Want to play without consequences? Cancel and choose <strong>Game C</strong> (clay shooting).
+                Want to play without consequences? Play <strong>Clay Shooting</strong> mode.
               </p>
               <div className="auth-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
