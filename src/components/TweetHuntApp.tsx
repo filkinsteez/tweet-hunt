@@ -10,8 +10,10 @@ import { GameCanvas } from "./GameCanvas";
 import { TARGETS_PER_ROUND } from "@/game/constants";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
 import { isPortraitLayout } from "@/game/layout";
+import { selectTweetCandidates } from "@/game/mockTweets";
 import { drawFullscreenImage, drawPixelText } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
+import { useDebugMode } from "@/hooks/useDebugMode";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 
 type Stage = "welcome" | "title" | "play" | "review";
@@ -53,6 +55,7 @@ const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: numbe
 
 export function TweetHuntApp() {
   const layout = useGameplayLayout();
+  const debugMode = useDebugMode();
   const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
   const [config, setConfig] = useState<HuntConfig>({ mode: "A", source: "random" });
@@ -65,6 +68,7 @@ export function TweetHuntApp() {
   const [roundTweets, setRoundTweets] = useState<TweetCandidate[]>([]);
   const [isLiveTweetRound, setIsLiveTweetRound] = useState(false);
   const [useArcadeFallback, setUseArcadeFallback] = useState(false);
+  const [isDebugRound, setIsDebugRound] = useState(false);
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
   const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
@@ -162,6 +166,7 @@ export function TweetHuntApp() {
     setRoundTweets([]);
     setIsLiveTweetRound(false);
     setUseArcadeFallback(mode !== "C");
+    setIsDebugRound(false);
     setLastResult(null);
     setPendingMode(null);
     if (message) setTweetLoadError(message);
@@ -181,6 +186,7 @@ export function TweetHuntApp() {
       setRoundTweets(tweets);
       setIsLiveTweetRound(mode !== "C");
       setUseArcadeFallback(false);
+      setIsDebugRound(false);
       setConfig((current) => ({ ...current, mode }));
       setLastResult(null);
       setPendingMode(null);
@@ -201,8 +207,23 @@ export function TweetHuntApp() {
     setRoundTweets([]);
     setIsLiveTweetRound(false);
     setUseArcadeFallback(false);
+    setIsDebugRound(false);
     setLastResult(null);
     setPendingMode(null);
+    setStage("play");
+  }
+
+  function startDebugRound(mode: GameMode) {
+    const tweets = selectTweetCandidates({ source: "random" }, TARGETS_PER_ROUND);
+    setConfig((current) => ({ ...current, mode }));
+    setRoundTweets(tweets);
+    setIsLiveTweetRound(true);
+    setUseArcadeFallback(false);
+    setIsDebugRound(true);
+    setLastResult(null);
+    setPendingMode(null);
+    setAuthError(null);
+    setTweetLoadError(null);
     setStage("play");
   }
 
@@ -211,6 +232,10 @@ export function TweetHuntApp() {
     setTweetLoadError(null);
     if (mode === "C") {
       startPracticeMode(mode);
+      return;
+    }
+    if (debugMode) {
+      startDebugRound(mode);
       return;
     }
     setPendingMode(mode);
@@ -257,6 +282,10 @@ export function TweetHuntApp() {
 
   function nextRound() {
     setRoundNumber((current) => current + 1);
+    if (isDebugRound && config.mode !== "C") {
+      startDebugRound(config.mode);
+      return;
+    }
     if (lastResult?.isLiveTweetRound && lastResult.targetLimit < TARGETS_PER_ROUND) {
       startArcadeFallback(config.mode, "Live tweets exhausted. Switching to arcade scoring with no deletion.");
       return;
@@ -272,7 +301,7 @@ export function TweetHuntApp() {
     setStage("title");
   }
 
-  const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
+  const hasIntroBannerContent = debugMode || authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
   const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
@@ -350,6 +379,11 @@ export function TweetHuntApp() {
 
     return (
       <aside className="intro-banner" aria-label="About Tweet Hunt">
+        {debugMode ? (
+          <p className="intro-banner-debug">
+            DEBUG MODE — mock tweets, no X deletion. Append <code>?debug=0</code> to disable.
+          </p>
+        ) : null}
         {authStatus === "authorized" ? (
           <p className="intro-banner-status">
             Authorized{handle ? ` as @${handle}` : ""}.
@@ -498,6 +532,7 @@ export function TweetHuntApp() {
             roundNumber={roundNumber}
             tweets={roundTweets}
             isLiveTweetRound={isLiveTweetRound}
+            debugMode={isDebugRound}
             onRoundEnd={handleRoundEnd}
             onQuit={() => setStage("title")}
           />

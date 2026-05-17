@@ -652,6 +652,22 @@ button {
   color: var(--danger);
 }
 
+.intro-banner-debug {
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.intro-banner-debug code {
+  font-family: var(--tweet-font);
+  font-size: 11px;
+  color: #fff9e8;
+  background: rgba(231, 154, 27, 0.18);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .intro-banner-actions {
   display: flex;
   flex-wrap: wrap;
@@ -889,7 +905,8 @@ button {
   }
 
   .intro-banner-status,
-  .intro-banner-error {
+  .intro-banner-error,
+  .intro-banner-debug {
     font-size: 11px;
   }
 

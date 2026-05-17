@@ -155,6 +155,7 @@ type Props = {
   roundNumber: number;
   tweets: TweetCandidate[];
   isLiveTweetRound: boolean;
+  debugMode?: boolean;
   onRoundEnd: (result: RoundResult) => void;
   onQuit: () => void;
 };
@@ -1098,7 +1099,7 @@ function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, 
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit }: Props) {
+export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugMode = false, onRoundEnd, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
@@ -1122,6 +1123,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const pauseStartedAtRef = useRef<number | null>(null);
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
+  const debugModeRef = useRef(debugMode);
+
+  useEffect(() => {
+    debugModeRef.current = debugMode;
+  }, [debugMode]);
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
@@ -1697,9 +1703,13 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     state.hits.push(record);
 
     if (hit.tweet) {
-      void deleteTweetOnHit(hit.tweet.id, state.mode).then((deleted) => {
-        record.deleteStatus = deleted ? "deleted" : "failed";
-      });
+      if (debugModeRef.current) {
+        record.deleteStatus = "deleted";
+      } else {
+        void deleteTweetOnHit(hit.tweet.id, state.mode).then((deleted) => {
+          record.deleteStatus = deleted ? "deleted" : "failed";
+        });
+      }
       setMicroReveal({
         id: `${hit.id}_${now}`,
         text: `"${truncate(hit.tweet.text, 128)}"`,
