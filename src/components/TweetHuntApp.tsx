@@ -9,8 +9,10 @@ import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { GameCanvas } from "./GameCanvas";
 import { TARGETS_PER_ROUND } from "@/game/constants";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
+import { isPortraitLayout } from "@/game/layout";
 import { drawFullscreenImage, drawPixelText } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
+import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 
 type Stage = "welcome" | "title" | "play" | "review";
 type AuthStatus = "unknown" | "authorized" | "unauthorized";
@@ -33,8 +35,24 @@ const TITLE_SELECTION_POSITIONS: Record<GameMode, { x: number; y: number }> = {
   B: { x: 178, y: 464 },
   C: { x: 178, y: 514 }
 };
+const TITLE_MODE_LABELS: Record<GameMode, string> = {
+  A: "1 TWEET",
+  B: "2 TWEETS",
+  C: "CLAY SHOOTING"
+};
+const TITLE_MODE_HEADINGS: Record<GameMode, string> = {
+  A: "GAME A",
+  B: "GAME B",
+  C: "GAME C"
+};
+const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: number }> = {
+  A: { headingY: 352, labelY: 394 },
+  B: { headingY: 508, labelY: 550 },
+  C: { headingY: 664, labelY: 706 }
+};
 
 export function TweetHuntApp() {
+  const layout = useGameplayLayout();
   const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
   const [config, setConfig] = useState<HuntConfig>({ mode: "A", source: "random" });
@@ -255,6 +273,7 @@ export function TweetHuntApp() {
   }
 
   const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
+  const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
   const welcomeScreenImages = useMemo(() => ({ background: welcomeAsset.src }), []);
@@ -264,6 +283,48 @@ export function TweetHuntApp() {
   }, []);
   const drawTitleScreen = useCallback(
     ({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
+      if (isPortraitLayout(layout)) {
+        ctx.fillStyle = "#02030a";
+        ctx.fillRect(0, 0, layout.width, layout.height);
+        drawPixelText(ctx, "TWEET", layout.width / 2, 104, {
+          size: 42,
+          color: "#e79a1b",
+          align: "center"
+        });
+        drawPixelText(ctx, "HUNT", layout.width / 2, 166, {
+          size: 42,
+          color: "#fff9e8",
+          align: "center"
+        });
+        drawPixelText(ctx, `TOP SCORE ${titleTopScore}`, layout.width / 2, 254, {
+          size: 14,
+          color: "#70e27b",
+          align: "center"
+        });
+        for (const mode of ["A", "B", "C"] as const) {
+          const row = MOBILE_TITLE_MODE_ROWS[mode];
+          drawPixelText(ctx, TITLE_MODE_HEADINGS[mode], layout.width / 2, row.headingY, {
+            size: 18,
+            color: "#e79a1b",
+            align: "center"
+          });
+          drawPixelText(ctx, TITLE_MODE_LABELS[mode], layout.width / 2, row.labelY, {
+            size: mode === "C" ? 20 : 24,
+            color: "#fff9e8",
+            align: "center"
+          });
+        }
+        if (titleSelectionMode) {
+          drawPixelText(ctx, ">", 118, MOBILE_TITLE_MODE_ROWS[titleSelectionMode].labelY - 1, { size: 24, color: "#e79a1b" });
+        }
+        drawPixelText(ctx, "TAP TO PLAY", layout.width / 2, 840, {
+          size: 13,
+          color: "#e79a1b",
+          align: "center"
+        });
+        return;
+      }
+
       drawFullscreenImage(ctx, images.background);
       drawPixelText(ctx, titleTopScore, TITLE_TOP_SCORE.x, TITLE_TOP_SCORE.y, {
         size: TITLE_TOP_SCORE.size,
@@ -281,7 +342,7 @@ export function TweetHuntApp() {
         }
       }
     },
-    [titleSelectionMode, titleTopScore]
+    [layout, titleSelectionMode, titleTopScore]
   );
 
   function renderIntroBanner() {
@@ -315,7 +376,7 @@ export function TweetHuntApp() {
     return (
       <main className="game-shell" onClickCapture={showTitleScreen} onPointerDownCapture={showTitleScreen}>
         <div className="game-stage">
-          <ArcadeScreenCanvas className="title-crt" ariaLabel="tweet-hunt welcome screen" images={welcomeScreenImages} drawFrame={drawWelcomeScreen}>
+          <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel="tweet-hunt welcome screen" images={welcomeScreenImages} drawFrame={drawWelcomeScreen}>
             <button className="welcome-start-button" type="button" onClick={showTitleScreen} onPointerUp={showTitleScreen} aria-label="Start Tweet Hunt">
               Start Tweet Hunt
             </button>
@@ -347,10 +408,10 @@ export function TweetHuntApp() {
     const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
 
     return (
-      <main className={`game-shell${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
+      <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
         <div className="game-stage">
-          <ArcadeScreenCanvas className="title-crt" ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
+          <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
             <div className="title-hit-regions" aria-label="Choose a game mode">
               <button
                 className="title-option title-option-a"
@@ -361,7 +422,7 @@ export function TweetHuntApp() {
                 onBlur={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
                 onClick={() => selectTitleMode("A")}
               >
-                Game A
+                {TITLE_MODE_LABELS.A}
               </button>
               <button
                 className="title-option title-option-b"
@@ -372,7 +433,7 @@ export function TweetHuntApp() {
                 onBlur={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
                 onClick={() => selectTitleMode("B")}
               >
-                Game B
+                {TITLE_MODE_LABELS.B}
               </button>
               <button
                 className="title-option title-option-c"
@@ -383,7 +444,7 @@ export function TweetHuntApp() {
                 onBlur={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
                 onClick={() => selectTitleMode("C")}
               >
-                Game C
+                {TITLE_MODE_LABELS.C}
               </button>
             </div>
           </ArcadeScreenCanvas>
@@ -402,7 +463,7 @@ export function TweetHuntApp() {
               <p>{modalCopy}</p>
               <p className="auth-modal-hint">
                 Want to play without consequences?
-                <br />
+                <br className="mobile-only-line-break" />
                 Play <strong>Clay Shooting</strong> mode.
               </p>
               <div className="auth-modal-actions">
@@ -450,6 +511,7 @@ export function TweetHuntApp() {
       <div className="game-stage">
         {stage === "review" && lastResult ? (
           <ArcadeRoundReview
+            layout={layout}
             result={lastResult}
             onNextRound={nextRound}
             onChangeGame={() => setStage("title")}

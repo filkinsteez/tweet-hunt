@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import crtAsset from "../../Assets/CRT/crt_edited.png";
-import { CANVAS_HEIGHT, CANVAS_WIDTH } from "@/game/constants";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
+import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
 
 type ArcadeScreenDrawParams = {
   ctx: CanvasRenderingContext2D;
@@ -16,22 +16,27 @@ type Props = {
   ariaLabel: string;
   className?: string;
   presentation?: "crt" | "crisp";
+  layout?: GameplayLayoutProfile;
   images: Record<string, string>;
   drawFrame: (params: ArcadeScreenDrawParams) => void;
   children?: ReactNode;
 };
 
-export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "crt", images, drawFrame, children }: Props) {
+export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "crt", layout = LANDSCAPE_LAYOUT, images, drawFrame, children }: Props) {
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
   const imagesRef = useRef<Record<string, HTMLImageElement>>({});
   const rafRef = useRef<number | null>(null);
-  const mouseRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+  const mouseRef = useRef({ x: layout.width / 2, y: layout.height / 2 });
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const useCrt = presentation === "crt";
+
+  useEffect(() => {
+    mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
+  }, [layout.height, layout.width]);
 
   useEffect(() => {
     if (!useCrt) {
@@ -133,21 +138,21 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [assetReady, fontReady, drawFrame, useCrt]);
+  }, [assetReady, fontReady, drawFrame, layout.height, layout.width, useCrt]);
 
   const directSource = !useCrt || crtUnavailable;
 
   function handleMouseMove(event: MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     mouseRef.current = {
-      x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      x: ((event.clientX - rect.left) / rect.width) * layout.width,
+      y: ((event.clientY - rect.top) / rect.height) * layout.height
     };
   }
 
   return (
     <div
-      className={`canvas-wrap crt-cabinet arcade-screen-canvas${directSource ? " crt-fallback" : ""}${!useCrt ? " crt-crisp-screen" : ""}${className ? ` ${className}` : ""}`}
+      className={`canvas-wrap crt-cabinet arcade-screen-canvas ${layout.className}${directSource ? " crt-fallback" : ""}${!useCrt ? " crt-crisp-screen" : ""}${className ? ` ${className}` : ""}`}
       style={{ "--crt-art": `url(${crtAsset.src})` } as CSSProperties}
       aria-label={ariaLabel}
     >
@@ -155,14 +160,14 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
         <canvas
           ref={sourceCanvasRef}
           className="game-canvas game-source-canvas"
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
+          width={layout.width}
+          height={layout.height}
         />
         <canvas
           ref={crtCanvasRef}
           className="game-canvas game-crt-canvas"
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
+          width={layout.width}
+          height={layout.height}
           aria-hidden={crtUnavailable}
         />
         {children}

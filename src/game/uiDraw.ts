@@ -25,11 +25,13 @@ export type Rect = {
 const PIXEL_FONT = "'Press Start 2P', monospace";
 
 export function drawFullscreenImage(ctx: CanvasRenderingContext2D, image: CanvasImageSource | null | undefined) {
+  const width = ctx.canvas.width || CANVAS_WIDTH;
+  const height = ctx.canvas.height || CANVAS_HEIGHT;
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillRect(0, 0, width, height);
   if (image) {
-    ctx.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.drawImage(image, 0, 0, width, height);
   }
 }
 

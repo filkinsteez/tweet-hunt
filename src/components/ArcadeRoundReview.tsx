@@ -5,10 +5,12 @@ import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from "@/game/constants";
 import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
+import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, wrapPixelText, type Rect } from "@/game/uiDraw";
 import type { RoundResult } from "@/game/types";
 
 type Props = {
+  layout?: GameplayLayoutProfile;
   result: RoundResult;
   onChangeGame: () => void;
   onNextRound: () => void;
@@ -28,12 +30,12 @@ const SUMMARY_MODE_Y = 210;
 const SUMMARY_STATS_LABEL_Y = 320;
 const SUMMARY_STATS_VALUE_Y = 376;
 
-function rectStyle(rect: Rect): CSSProperties {
+function rectStyle(rect: Rect, layout: GameplayLayoutProfile): CSSProperties {
   return {
-    left: `${(rect.x / CANVAS_WIDTH) * 100}%`,
-    top: `${(rect.y / CANVAS_HEIGHT) * 100}%`,
-    width: `${(rect.width / CANVAS_WIDTH) * 100}%`,
-    height: `${(rect.height / CANVAS_HEIGHT) * 100}%`
+    left: `${(rect.x / layout.width) * 100}%`,
+    top: `${(rect.y / layout.height) * 100}%`,
+    width: `${(rect.width / layout.width) * 100}%`,
+    height: `${(rect.height / layout.height) * 100}%`
   };
 }
 
@@ -70,7 +72,7 @@ function drawLimitedText(
   }
 }
 
-export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) {
+export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeGame, onNextRound }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet), [result.hits]);
   const isClayRound = result.mode === "C";
@@ -81,6 +83,13 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
   const currentEngagement = currentTweet ? totalTweetEngagement(currentTweet) : 0;
   const showNextRound = result.passed || destructiveHits.length === 0 || isPartialLiveRound;
   const hasTweetReview = Boolean(currentHit && currentTweet);
+  const isPortrait = isPortraitLayout(layout);
+  const panel = isPortrait ? { x: 24, y: 42, width: 492, height: 876 } : PANEL;
+  const content = isPortrait ? { x: 52, y: 214, width: 436, height: 380 } : CONTENT;
+  const previousButton = isPortrait ? { x: 34, y: 628, width: 72, height: 72 } : PREV_BUTTON;
+  const nextButton = isPortrait ? { x: 434, y: 628, width: 72, height: 72 } : NEXT_BUTTON;
+  const quitButton = isPortrait ? { x: 58, y: 800, width: 180, height: 66 } : QUIT_BUTTON;
+  const nextRoundButton = isPortrait ? { x: 276, y: 800, width: 206, height: 66 } : NEXT_ROUND_BUTTON;
 
   useEffect(() => {
     setCurrentIndex((index) => Math.min(index, Math.max(destructiveHits.length - 1, 0)));
@@ -115,8 +124,8 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
     ({ ctx }: { ctx: CanvasRenderingContext2D }) => {
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = "#02030a";
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      drawPixelBeveledPanel(ctx, PANEL, {
+      ctx.fillRect(0, 0, layout.width, layout.height);
+      drawPixelBeveledPanel(ctx, panel, {
         fill: "rgba(5, 7, 16, 0.96)",
         stroke: "#e79a1b",
         lineWidth: 5,
@@ -132,85 +141,86 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
             : "NO TWEETS DELETED";
 
       if (hasTweetReview && currentHit && currentTweet) {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, CANVAS_WIDTH / 2, 74, {
-          size: 18,
+        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 82 : 74, {
+          size: isPortrait ? 15 : 18,
           color: "#e79a1b",
           align: "center"
         });
-        drawPixelText(ctx, title, CANVAS_WIDTH / 2, 112, {
-          size: 20,
+        drawPixelText(ctx, title, layout.width / 2, isPortrait ? 122 : 112, {
+          size: isPortrait ? 16 : 20,
           color: "#fff9e8",
           align: "center"
         });
-        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, CANVAS_WIDTH / 2, 148, {
-          size: 16,
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 164 : 148, {
+          size: isPortrait ? 11 : 16,
           color: "#70e27b",
           align: "center"
         });
-        drawPixelBeveledPanel(ctx, CONTENT, {
+        drawPixelBeveledPanel(ctx, content, {
           fill: "#101018",
           stroke: "#2a2a34",
           lineWidth: 4,
           bevel: 12
         });
-        drawPixelText(ctx, formatDate(currentTweet.createdAt), CONTENT.x + 28, CONTENT.y + 26, {
+        drawPixelText(ctx, formatDate(currentTweet.createdAt), content.x + 24, content.y + 26, {
           size: 11,
           color: "#e79a1b"
         });
-        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, CONTENT.x + 28, CONTENT.y + 70, CONTENT.width - 56, 28, 6, 16);
-        drawPixelText(ctx, `${currentEngagement} engagement`, CONTENT.x + 28, CONTENT.y + CONTENT.height - 58, {
+        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 70, content.width - 48, isPortrait ? 26 : 28, isPortrait ? 8 : 6, isPortrait ? 13 : 16);
+        drawPixelText(ctx, `${currentEngagement} engagement`, content.x + 24, content.y + content.height - 58, {
           size: 11,
           color: "#e79a1b"
         });
-        drawPixelText(ctx, `${currentTweet.likes} likes  ${currentTweet.reposts} reposts  ${currentTweet.replies} replies`, CONTENT.x + 28, CONTENT.y + CONTENT.height - 34, {
-          size: 10,
+        drawPixelText(ctx, `${currentTweet.likes} likes  ${currentTweet.reposts} reposts  ${currentTweet.replies} replies`, content.x + 24, content.y + content.height - 34, {
+          size: isPortrait ? 8 : 10,
           color: "#e79a1b"
         });
         if (currentHit.deleteStatus) {
-          drawPixelText(ctx, currentHit.deleteStatus.toUpperCase(), CONTENT.x + CONTENT.width - 28, CONTENT.y + CONTENT.height - 58, {
+          drawPixelText(ctx, currentHit.deleteStatus.toUpperCase(), content.x + content.width - 24, content.y + content.height - 58, {
             size: 11,
             color: currentHit.deleteStatus === "deleted" ? "#70e27b" : "#ff5c51",
             align: "right"
           });
         }
       } else {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, CANVAS_WIDTH / 2, SUMMARY_ROUND_Y, {
-          size: 28,
+        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, {
+          size: isPortrait ? 19 : 28,
           color: "#e79a1b",
           align: "center"
         });
-        drawPixelText(ctx, title, CANVAS_WIDTH / 2, SUMMARY_MODE_Y, {
-          size: 18,
+        drawPixelText(ctx, title, layout.width / 2, isPortrait ? 270 : SUMMARY_MODE_Y, {
+          size: isPortrait ? 14 : 18,
           color: "#fff9e8",
           align: "center"
         });
-        drawPixelPanel(ctx, SUMMARY_STATS_PANEL, {
+        const statsPanel = isPortrait ? { x: 58, y: 360, width: 424, height: 176 } : SUMMARY_STATS_PANEL;
+        drawPixelPanel(ctx, statsPanel, {
           fill: "#101018",
           stroke: "#2a2a34",
           lineWidth: 4
         });
-        const scoreCenterX = SUMMARY_STATS_PANEL.x + SUMMARY_STATS_PANEL.width * 0.3;
-        const hitsCenterX = SUMMARY_STATS_PANEL.x + SUMMARY_STATS_PANEL.width * 0.75;
-        drawPixelText(ctx, "SCORE", scoreCenterX, SUMMARY_STATS_LABEL_Y, {
-          size: 18,
+        const scoreCenterX = statsPanel.x + statsPanel.width * 0.3;
+        const hitsCenterX = statsPanel.x + statsPanel.width * 0.75;
+        drawPixelText(ctx, "SCORE", scoreCenterX, isPortrait ? 398 : SUMMARY_STATS_LABEL_Y, {
+          size: isPortrait ? 14 : 18,
           color: "#70e27b",
           align: "center",
           shadow: false
         });
-        drawPixelText(ctx, String(result.score).padStart(6, "0"), scoreCenterX, SUMMARY_STATS_VALUE_Y, {
-          size: 42,
+        drawPixelText(ctx, String(result.score).padStart(6, "0"), scoreCenterX, isPortrait ? 462 : SUMMARY_STATS_VALUE_Y, {
+          size: isPortrait ? 24 : 42,
           color: "#70e27b",
           align: "center",
           shadow: false
         });
-        drawPixelText(ctx, "HITS", hitsCenterX, SUMMARY_STATS_LABEL_Y, {
-          size: 18,
+        drawPixelText(ctx, "HITS", hitsCenterX, isPortrait ? 398 : SUMMARY_STATS_LABEL_Y, {
+          size: isPortrait ? 14 : 18,
           color: "#70e27b",
           align: "center",
           shadow: false
         });
-        drawPixelText(ctx, String(result.hits.length), hitsCenterX, SUMMARY_STATS_VALUE_Y, {
-          size: 42,
+        drawPixelText(ctx, String(result.hits.length), hitsCenterX, isPortrait ? 462 : SUMMARY_STATS_VALUE_Y, {
+          size: isPortrait ? 30 : 42,
           color: "#70e27b",
           align: "center",
           shadow: false
@@ -218,21 +228,21 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
       }
 
       if (destructiveHits.length > 1) {
-        drawPixelText(ctx, "<", PREV_BUTTON.x + PREV_BUTTON.width / 2, PREV_BUTTON.y + 22, {
+        drawPixelText(ctx, "<", previousButton.x + previousButton.width / 2, previousButton.y + 18, {
           size: 36,
           color: "#e79a1b",
           align: "center"
         });
-        drawPixelText(ctx, ">", NEXT_BUTTON.x + NEXT_BUTTON.width / 2, NEXT_BUTTON.y + 22, {
+        drawPixelText(ctx, ">", nextButton.x + nextButton.width / 2, nextButton.y + 18, {
           size: 36,
           color: "#e79a1b",
           align: "center"
         });
       }
 
-      drawButton(ctx, QUIT_BUTTON, "QUIT");
+      drawButton(ctx, quitButton, "QUIT");
       if (showNextRound) {
-        drawButton(ctx, NEXT_ROUND_BUTTON, "NEXT ROUND", true);
+        drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true);
       }
     },
     [
@@ -244,6 +254,13 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
       hasTweetReview,
       isArcadeFallbackRound,
       isClayRound,
+      isPortrait,
+      layout,
+      nextButton,
+      nextRoundButton,
+      panel,
+      previousButton,
+      quitButton,
       result.hits.length,
       result.roundNumber,
       result.score,
@@ -255,6 +272,7 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
     <ArcadeScreenCanvas
       className="review-crt"
       presentation="crisp"
+      layout={layout}
       ariaLabel={`Round ${result.roundNumber} review`}
       images={EMPTY_IMAGES}
       drawFrame={drawFrame}
@@ -262,19 +280,19 @@ export function ArcadeRoundReview({ result, onChangeGame, onNextRound }: Props) 
       <div className="review-hit-regions" aria-label={`Round ${result.roundNumber} review controls`}>
         {destructiveHits.length > 1 ? (
           <>
-            <button className="review-hit-button" type="button" style={rectStyle(PREV_BUTTON)} onClick={showPreviousTweet} aria-label="Previous bagged tweet">
+            <button className="review-hit-button" type="button" style={rectStyle(previousButton, layout)} onClick={showPreviousTweet} aria-label="Previous bagged tweet">
               Previous
             </button>
-            <button className="review-hit-button" type="button" style={rectStyle(NEXT_BUTTON)} onClick={showNextTweet} aria-label="Next bagged tweet">
+            <button className="review-hit-button" type="button" style={rectStyle(nextButton, layout)} onClick={showNextTweet} aria-label="Next bagged tweet">
               Next
             </button>
           </>
         ) : null}
-        <button className="review-hit-button" type="button" style={rectStyle(QUIT_BUTTON)} onClick={onChangeGame}>
+        <button className="review-hit-button" type="button" style={rectStyle(quitButton, layout)} onClick={onChangeGame}>
           Quit
         </button>
         {showNextRound ? (
-          <button className="review-hit-button" type="button" style={rectStyle(NEXT_ROUND_BUTTON)} onClick={onNextRound}>
+          <button className="review-hit-button" type="button" style={rectStyle(nextRoundButton, layout)} onClick={onNextRound}>
             Next round
           </button>
         ) : null}

@@ -32,7 +32,6 @@ import {
   DOG_LOWER_DURATION_MS,
   DOG_POP_DELAY_MS,
   DOG_RETRIEVE_PAUSE_MS,
-  DOG_RETRIEVE_TRIGGER_Y,
   DOG_RISE_DURATION_MS,
   HIT_REACTION_DURATION_MS,
   ROUND_INTRO_DURATION_MS,
@@ -63,8 +62,6 @@ import {
   flyAwayTimerForRound,
   gameBDuckSpeedIndex,
   modeReleaseDelay,
-  nesToCanvasX,
-  nesToCanvasY,
   perfectBonusForRound,
   pointHitsZapperShape,
   readSpeedAndAdvance,
@@ -76,6 +73,8 @@ import {
 } from "@/game/duckHuntMechanics";
 import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import { gameAudio, type GameSoundKey } from "@/game/audio";
+import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
+import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 import {
   clearScene,
   drawClayEnvironment,
@@ -101,6 +100,7 @@ type RuntimePhase = "boot" | "intro" | "active" | "resolve" | "ended";
 
 type RuntimeState = {
   mode: GameMode;
+  layout: GameplayLayoutProfile;
   roundNumber: number;
   phase: RuntimePhase;
   phaseStartedAtMs: number;
@@ -200,27 +200,19 @@ const DOG_BARK_INITIAL_FRAMES = 4;
 const DOG_BARK_REPEAT_FRAMES = 16;
 const DUCK_FLAP_INTERVAL_FRAMES = 8;
 
-const HUD_LAYOUT = {
-  round: { x: 35, y: CANVAS_HEIGHT - 132 },
-  shots: { x: 41, y: CANVAS_HEIGHT - 92 },
-  hit: { x: 198, y: CANVAS_HEIGHT - 92 },
-  score: { x: 707, y: CANVAS_HEIGHT - 92 }
-};
 const BUTTON_TEXT_SIZE = 16;
-const MICRO_REVEAL_PANEL: Rect = { x: 150, y: 22, width: 660, height: 126 };
-const PAUSE_PANEL: Rect = { x: 236, y: 178, width: 488, height: 332 };
-const PAUSE_QUIT_BUTTON: Rect = { x: 292, y: 402, width: 168, height: 56 };
-const PAUSE_RESUME_BUTTON: Rect = { x: 500, y: 402, width: 168, height: 56 };
 
-function roundUiX(roundNumber: number) {
+function roundUiX(roundNumber: number, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
+  const hud = layout.hud;
   const shotsWidth = 29 * UI_SCALE;
   const roundWidth = (roundNumber < 10 ? 24 : 32) * UI_SCALE;
-  return HUD_LAYOUT.shots.x + (shotsWidth - roundWidth) / 2;
+  return hud.shots.x + (shotsWidth - roundWidth) / 2;
 }
 
-function createInitialState(mode: GameMode, roundNumber: number, targetLimit: number, isLiveTweetRound: boolean): RuntimeState {
+function createInitialState(mode: GameMode, roundNumber: number, targetLimit: number, isLiveTweetRound: boolean, layout: GameplayLayoutProfile): RuntimeState {
   return {
     mode,
+    layout,
     roundNumber,
     phase: "boot",
     phaseStartedAtMs: performance.now(),
@@ -241,7 +233,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     fixedStepAccumulatorMs: 0,
     lastFrameAtMs: undefined,
     fixedFrameCounter: 0,
-    releaseDelayFrames: modeReleaseDelay(mode),
+    releaseDelayFrames: isPortraitLayout(layout) ? (mode === "A" ? 18 : 8) : modeReleaseDelay(mode),
     pendingLaunches: 0,
     launchSlotIndex: 0,
     lastPathId: -1,
@@ -256,6 +248,14 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
+}
+
+function canvasToNesXForLayout(x: number, layout: GameplayLayoutProfile) {
+  return Math.floor((x / layout.width) * NES_WIDTH);
+}
+
+function canvasToNesYForLayout(y: number, layout: GameplayLayoutProfile) {
+  return Math.floor((y / layout.height) * NES_HEIGHT);
 }
 
 function createTransparentCanvas(
@@ -312,11 +312,12 @@ function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, 
   ctx.drawImage(atlas, sourceX, sourceY, glyphWidth, glyphHeight, x, y, glyphWidth * UI_SCALE, glyphHeight * UI_SCALE);
 }
 
-function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, score: number) {
+function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, score: number, layout: GameplayLayoutProfile) {
+  const hud = layout.hud;
   const digits = Math.max(0, score).toString().padStart(6, "0").slice(-6);
   const glyphWidth = 8 * UI_SCALE;
-  const x = HUD_LAYOUT.score.x + 4 * UI_SCALE - 4;
-  const y = HUD_LAYOUT.score.y + UI_SCALE + 8;
+  const x = hud.score.x + 4 * UI_SCALE - 4;
+  const y = hud.score.y + UI_SCALE + 8;
 
   ctx.fillStyle = "#050508";
   ctx.fillRect(x, y, glyphWidth * 6, 8 * UI_SCALE);
@@ -325,21 +326,22 @@ function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement,
   }
 }
 
-function drawRoundNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, roundNumber: number) {
+function drawRoundNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, roundNumber: number, layout: GameplayLayoutProfile) {
   const digits = Math.max(1, roundNumber).toString().slice(-2);
   const glyphWidth = 8 * UI_SCALE;
-  const x = roundUiX(roundNumber) + 16 * UI_SCALE;
-  const y = HUD_LAYOUT.round.y;
+  const x = roundUiX(roundNumber, layout) + 16 * UI_SCALE;
+  const y = layout.hud.round.y;
 
   for (let index = 0; index < digits.length; index += 1) {
     drawScoreDigit(ctx, atlas, Number(digits[index]), x + index * glyphWidth, y);
   }
 }
 
-function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hits: number) {
+function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hits: number, layout: GameplayLayoutProfile) {
+  const hud = layout.hud;
   const duckWidth = 8;
   const duckHeight = 8;
-  const y = HUD_LAYOUT.hit.y + 3 * UI_SCALE;
+  const y = hud.hit.y + 3 * UI_SCALE;
 
   for (let index = 0; index < Math.min(hits, TARGETS_PER_ROUND); index += 1) {
     ctx.drawImage(
@@ -348,7 +350,7 @@ function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hi
       0,
       duckWidth,
       duckHeight,
-      HUD_LAYOUT.hit.x + (35 + index * 8) * UI_SCALE,
+      hud.hit.x + (35 + index * 8) * UI_SCALE,
       y,
       duckWidth * UI_SCALE,
       duckHeight * UI_SCALE
@@ -356,10 +358,11 @@ function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hi
   }
 }
 
-function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number) {
+function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number, layout: GameplayLayoutProfile) {
+  const hud = layout.hud;
   ctx.fillStyle = "#050508";
   for (let index = shotsRemaining; index < SHOTS_PER_VOLLEY; index += 1) {
-    ctx.fillRect(HUD_LAYOUT.shots.x + (4 + index * 8) * UI_SCALE, HUD_LAYOUT.shots.y + 3 * UI_SCALE, 5 * UI_SCALE, 9 * UI_SCALE);
+    ctx.fillRect(hud.shots.x + (4 + index * 8) * UI_SCALE, hud.shots.y + 3 * UI_SCALE, 5 * UI_SCALE, 9 * UI_SCALE);
   }
 }
 
@@ -370,6 +373,8 @@ function drawSpriteHud(
   clayTargetAtlas: CanvasImageSource | null | undefined
 ) {
   const isClayMode = state.mode === "C";
+  const layout = state.layout;
+  const hud = layout.hud;
   const shots = isClayMode ? images.clayShots ?? images.shots : images.shots;
   const hit = isClayMode ? images.clayHit ?? images.hit : images.hit;
   const hitAtlas = images.hitAtlas;
@@ -387,24 +392,24 @@ function drawSpriteHud(
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber), HUD_LAYOUT.round.y);
-  drawUiImage(ctx, shots, HUD_LAYOUT.shots.x, HUD_LAYOUT.shots.y);
-  drawUiImage(ctx, hit, HUD_LAYOUT.hit.x, HUD_LAYOUT.hit.y);
-  drawUiImage(ctx, score, HUD_LAYOUT.score.x, HUD_LAYOUT.score.y);
-  drawRoundNumber(ctx, roundAtlas, state.roundNumber);
-  maskSpentShots(ctx, state.shotsRemaining);
+  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber, layout), hud.round.y);
+  drawUiImage(ctx, shots, hud.shots.x, hud.shots.y);
+  drawUiImage(ctx, hit, hud.hit.x, hud.hit.y);
+  drawUiImage(ctx, score, hud.score.x, hud.score.y);
+  drawRoundNumber(ctx, roundAtlas, state.roundNumber, layout);
+  maskSpentShots(ctx, state.shotsRemaining, layout);
   if (isClayMode && clayHitCounterFilled && state.hits.length > 0) {
-    drawClayHitCounterFilledOverlay(ctx, clayHitCounterFilled, state.hits.length, HUD_LAYOUT.hit, UI_SCALE);
+    drawClayHitCounterFilledOverlay(ctx, clayHitCounterFilled, state.hits.length, hud.hit, UI_SCALE);
   } else if (isClayMode && clayHitFilled) {
-    drawClayHitHudIndicators(ctx, clayHitFilled, state.hits.length, HUD_LAYOUT.hit, UI_SCALE);
+    drawClayHitHudIndicators(ctx, clayHitFilled, state.hits.length, hud.hit, UI_SCALE);
   } else if (isClayMode && clayTargetAtlas) {
-    drawClayHitHudIndicators(ctx, clayTargetAtlas, state.hits.length, HUD_LAYOUT.hit, UI_SCALE, {
+    drawClayHitHudIndicators(ctx, clayTargetAtlas, state.hits.length, hud.hit, UI_SCALE, {
       sourceRect: CLAY_HIT_HUD_ATLAS_FRAME
     });
   } else if (hitAtlas) {
-    drawHitDucks(ctx, hitAtlas, state.hits.length);
+    drawHitDucks(ctx, hitAtlas, state.hits.length, layout);
   }
-  drawScoreNumber(ctx, scoreAtlas, state.score);
+  drawScoreNumber(ctx, scoreAtlas, state.score, layout);
   ctx.restore();
 }
 
@@ -426,25 +431,26 @@ function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, ti
   ctx.restore();
 }
 
-function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal) {
+function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
   if (!reveal) return;
+  const panel = layout.microRevealPanel;
 
-  drawPixelBeveledPanel(ctx, MICRO_REVEAL_PANEL, {
+  drawPixelBeveledPanel(ctx, panel, {
     fill: "rgba(10, 10, 14, 0.9)",
     stroke: "#e79a1b",
     lineWidth: 4,
     bevel: 12
   });
 
-  const textX = MICRO_REVEAL_PANEL.x + 24;
-  const textY = MICRO_REVEAL_PANEL.y + 20;
-  const textWidth = MICRO_REVEAL_PANEL.width - 48;
+  const textX = panel.x + 24;
+  const textY = panel.y + 20;
+  const textWidth = panel.width - 48;
   const lines = drawWrappedPixelText(ctx, reveal.text, textX, textY, textWidth, 23, {
     size: 12,
     color: "#fff9e8"
   });
-  const metricsY = Math.min(textY + lines * 23 + 14, MICRO_REVEAL_PANEL.y + MICRO_REVEAL_PANEL.height - 30);
-  drawPixelText(ctx, `${reveal.likes} likes  ${reveal.comments} comments  ${reveal.retweets} retweets`, CANVAS_WIDTH / 2, metricsY, {
+  const metricsY = Math.min(textY + lines * 23 + 14, panel.y + panel.height - 30);
+  drawPixelText(ctx, `${reveal.likes} likes  ${reveal.comments} comments  ${reveal.retweets} retweets`, layout.width / 2, metricsY, {
     size: 10,
     color: "#e79a1b",
     align: "center"
@@ -466,33 +472,77 @@ function drawPauseButton(ctx: CanvasRenderingContext2D, rect: Rect, label: strin
   });
 }
 
-function drawPauseOverlay(ctx: CanvasRenderingContext2D) {
+function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
   ctx.save();
   ctx.fillStyle = "rgba(2, 3, 8, 0.62)";
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillRect(0, 0, layout.width, layout.height);
   ctx.restore();
 
-  drawPixelBeveledPanel(ctx, PAUSE_PANEL, {
+  drawPixelBeveledPanel(ctx, layout.pausePanel, {
     fill: "rgba(5, 7, 16, 0.96)",
     stroke: "#e79a1b",
     lineWidth: 5,
     bevel: 18
   });
-  drawPixelText(ctx, "PAUSED", CANVAS_WIDTH / 2, PAUSE_PANEL.y + 52, {
+  drawPixelText(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 52, {
     size: 30,
     color: "#e79a1b",
     align: "center"
   });
-  drawPixelText(ctx, "Press Escape to resume.", CANVAS_WIDTH / 2, PAUSE_PANEL.y + 124, {
+  drawPixelText(ctx, isPortraitLayout(layout) ? "Tap Resume to continue." : "Press Escape to resume.", layout.width / 2, layout.pausePanel.y + 124, {
     size: 12,
     color: "#b9ad9a",
     align: "center"
   });
-  drawPauseButton(ctx, PAUSE_RESUME_BUTTON, "RESUME", true);
-  drawPauseButton(ctx, PAUSE_QUIT_BUTTON, "QUIT");
+  drawPauseButton(ctx, layout.pauseResumeButton, "RESUME", true);
+  drawPauseButton(ctx, layout.pauseQuitButton, "QUIT");
 }
 
-function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
+function drawPortraitEnvironment(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, isClayMode: boolean) {
+  ctx.imageSmoothingEnabled = false;
+  const skyTop = isClayMode ? "#13233f" : "#63c8ff";
+  const skyBottom = isClayMode ? "#27456b" : "#9be5ff";
+  const gradient = ctx.createLinearGradient(0, 0, 0, layout.height);
+  gradient.addColorStop(0, skyTop);
+  gradient.addColorStop(0.72, skyBottom);
+  gradient.addColorStop(0.721, "#2bb44a");
+  gradient.addColorStop(1, "#145d29");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, layout.width, layout.height);
+
+  if (!isClayMode) {
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    drawPortraitCloud(ctx, 76, 160, 0.72);
+    drawPortraitCloud(ctx, 346, 118, 0.6);
+    drawPortraitCloud(ctx, 438, 270, 0.48);
+  }
+
+  ctx.fillStyle = isClayMode ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.16)";
+  ctx.fillRect(0, 0, layout.width, 4);
+}
+
+function drawPortraitForeground(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile) {
+  ctx.fillStyle = "#2bb44a";
+  ctx.fillRect(0, layout.groundY, layout.width, layout.height - layout.groundY);
+  ctx.fillStyle = "#1f9239";
+  for (let x = 0; x < layout.width; x += 18) {
+    ctx.fillRect(x, layout.groundY + ((x / 18) % 2) * 7, 10, layout.height - layout.groundY);
+  }
+  ctx.fillStyle = "#145d29";
+  ctx.fillRect(0, layout.height - 28, layout.width, 28);
+}
+
+function drawPortraitCloud(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number) {
+  ctx.beginPath();
+  ctx.arc(x, y, 24 * scale, 0, Math.PI * 2);
+  ctx.arc(x + 28 * scale, y - 10 * scale, 30 * scale, 0, Math.PI * 2);
+  ctx.arc(x + 64 * scale, y, 24 * scale, 0, Math.PI * 2);
+  ctx.rect(x - 2 * scale, y, 70 * scale, 24 * scale);
+  ctx.fill();
+}
+
+function createWaitingTarget(state: RuntimeState, targetIndex: number, tweet: TweetCandidate | undefined): TargetEntity {
+  const { mode, roundNumber, layout } = state;
   const kind = mode === "C" ? "clay" : "bird";
   const color = targetColorForIndex(targetIndex % COLORS.length);
   const points = kind === "clay" ? clayScoreForRound(roundNumber) : tweet ? totalTweetEngagement(tweet) : duckScoreForRound(roundNumber, color);
@@ -504,13 +554,13 @@ function createWaitingTarget(mode: GameMode, roundNumber: number, targetIndex: n
     color,
     status: "flying",
     mechanicsState: "waiting",
-    x: CANVAS_WIDTH / 2,
-    y: CANVAS_HEIGHT,
+    x: layout.width / 2,
+    y: layout.height,
     vx: 0,
     vy: 0,
     nesX: NES_WIDTH / 2,
     nesY: NES_HEIGHT,
-    radius: 0,
+    radius: kind === "clay" ? layout.tuning.clayHitRadius : layout.tuning.touchHitRadius,
     createdAtMs: performance.now(),
     points,
     direction: 1,
@@ -536,6 +586,11 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   target.mechanicsState = "flying";
   target.createdAtMs = now;
   target.shootable = true;
+
+  if (isPortraitLayout(state.layout)) {
+    launchPortraitTarget(state, target, now);
+    return;
+  }
 
   if (target.kind === "clay") {
     const direction = target.slotIndex === 0 ? -1 : 1;
@@ -600,6 +655,52 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
 }
 
+function launchPortraitTarget(state: RuntimeState, target: TargetEntity, now: number) {
+  const { layout } = state;
+  const direction = target.slotIndex === 0 ? -1 : 1;
+  const jitter = (rngNext(state.rng) % 64) - 32;
+  target.direction = direction;
+  target.createdAtMs = now;
+  target.fliesBehindTree = false;
+
+  if (target.kind === "clay") {
+    const speedJitter = rngNext(state.rng) % layout.tuning.birdSpeedJitter;
+    target.pathId = rngNext(state.rng) % CLAY_PATHS.length;
+    target.x = layout.width / 2 + direction * (42 + Math.abs(jitter) * 0.55);
+    target.y = layout.tuning.clayLaunchY;
+    target.vx = direction * (layout.tuning.clayBaseVx + speedJitter);
+    target.vy = layout.tuning.clayBaseVy - (rngNext(state.rng) % 70);
+    target.nesX = canvasToNesXForLayout(target.x, layout);
+    target.nesY = canvasToNesYForLayout(target.y, layout);
+    target.clayImageIndex = 0;
+    target.distanceClass = 0;
+    target.zapperShape = clayZapperShape(state.roundNumber, 0);
+    playTargetSound(target, "clayPigeonLaunch", "launchSoundPlayed", 0.72);
+    gameAudio.startLoop("clayPigeonFlying", 0.32);
+    return;
+  }
+
+  const launchSide = target.slotIndex === 0 ? -1 : 1;
+  const speedJitter = rngNext(state.rng) % layout.tuning.birdSpeedJitter;
+  const startX =
+    launchSide < 0
+      ? layout.width - layout.tuning.birdHorizontalPadding
+      : layout.tuning.birdHorizontalPadding;
+  target.x = startX + jitter * 0.35;
+  target.y = layout.tuning.birdLaunchY + (rngNext(state.rng) % 72) - 36;
+  target.vx = -launchSide * (layout.tuning.birdBaseVx + speedJitter);
+  target.vy = layout.tuning.birdBaseVy - (rngNext(state.rng) % 70);
+  target.nesX = canvasToNesXForLayout(target.x, layout);
+  target.nesY = canvasToNesYForLayout(target.y, layout);
+  target.zapperShape = duckZapperShapeForRound(state.roundNumber);
+  target.flyAwayTimer = Math.round(flyAwayTimerForRound(state.roundNumber) * 1.25);
+  target.flyAwayFlag = false;
+  target.motionCode = target.vx >= 0 ? 3 : 13;
+  target.flight = "diag";
+  target.speedIndex = duckSpeedIndexForRound(Math.max(1, state.roundNumber - 1));
+  playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
+}
+
 function loadNextGameBSegment(target: TargetEntity) {
   const pathData = target.pathData;
   if (!pathData || target.pathIndex === undefined) return;
@@ -625,7 +726,7 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   for (let index = 0; index < count; index += 1) {
     const targetIndex = state.targetsPresented + index;
     const tweet = state.isLiveTweetRound ? tweets[state.nextTweetIndex + index] : undefined;
-    targets.push(createWaitingTarget(state.mode, state.roundNumber, targetIndex, tweet));
+    targets.push(createWaitingTarget(state, targetIndex, tweet));
   }
 
   state.phase = "active";
@@ -637,7 +738,7 @@ function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: num
   state.volleyNumber += 1;
   state.shotsRemaining = SHOTS_PER_VOLLEY;
   state.lastVolleyHitCount = 0;
-  state.releaseDelayFrames = modeReleaseDelay(state.mode);
+    state.releaseDelayFrames = releaseDelayForLayout(state);
   state.pendingLaunches = targets.length;
   state.launchSlotIndex = 0;
   state.retrieveDogTriggeredAtMs = undefined;
@@ -729,7 +830,7 @@ function advanceFixedStep(state: RuntimeState, now: number) {
     }
 
     if (target.mechanicsState === "falling") {
-      updateFallingDuck(target);
+      updateFallingDuck(state, target);
       continue;
     }
 
@@ -774,10 +875,25 @@ function advanceLaunchQueue(state: RuntimeState, now: number) {
 
   state.pendingLaunches -= 1;
   state.launchSlotIndex += 1;
-  state.releaseDelayFrames = state.pendingLaunches > 0 ? (rngNext(state.rng) & 0x3f) + 1 : 0;
+  state.releaseDelayFrames = state.pendingLaunches > 0 ? nextLaunchGapForLayout(state) : 0;
+}
+
+function releaseDelayForLayout(state: RuntimeState) {
+  if (!isPortraitLayout(state.layout)) return modeReleaseDelay(state.mode);
+  return state.mode === "A" ? 18 : 8;
+}
+
+function nextLaunchGapForLayout(state: RuntimeState) {
+  if (!isPortraitLayout(state.layout)) return (rngNext(state.rng) & 0x3f) + 1;
+  return state.mode === "B" ? (rngNext(state.rng) & 0x0f) + 8 : (rngNext(state.rng) & 0x1f) + 12;
 }
 
 function updateGameADuck(state: RuntimeState, target: TargetEntity) {
+  if (isPortraitLayout(state.layout)) {
+    updatePortraitDuck(state, target);
+    return;
+  }
+
   if (target.launchFlag) {
     if ((target.nesY ?? 0) < 0x88) {
       target.launchFlag = false;
@@ -808,6 +924,11 @@ function updateGameADuck(state: RuntimeState, target: TargetEntity) {
 }
 
 function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
+  if (isPortraitLayout(state.layout)) {
+    updatePortraitDuck(state, target);
+    return;
+  }
+
   if (target.flyAwayFlag) {
     moveTargetBySpeedCycle(target);
     if ((target.nesY ?? 0) < -16) markEscaped(state, target, performance.now());
@@ -824,13 +945,65 @@ function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
   target.segmentTimer = Math.max((target.segmentTimer ?? 0) - 1, 0);
 }
 
-function updateClayTarget(state: RuntimeState, target: TargetEntity) {
+function updatePortraitDuck(state: RuntimeState, target: TargetEntity) {
+  const { layout } = state;
   const dt = FIXED_STEP_MS / 1000;
-  target.vy += 260 * dt;
+
+  if (!target.flyAwayFlag && (state.fixedFrameCounter & 1) === 1) {
+    target.flyAwayTimer = Math.max((target.flyAwayTimer ?? 0) - 1, 0);
+    if (target.flyAwayTimer === 0) {
+      playTargetSound(target, "duckQuack", "flyAwaySoundPlayed", 0.55);
+      target.flyAwayFlag = true;
+    }
+  }
+
+  if (target.flyAwayFlag) {
+    target.vy = Math.min(target.vy, layout.tuning.birdFlyAwayVy);
+    target.vx *= 0.996;
+  } else {
+    target.vy += 20 * dt;
+  }
+
   target.x += target.vx * dt;
   target.y += target.vy * dt;
-  target.nesX = canvasToNesX(target.x);
-  target.nesY = canvasToNesY(target.y);
+
+  const left = layout.playBounds.x + layout.tuning.birdHorizontalPadding;
+  const right = layout.playBounds.x + layout.playBounds.width - layout.tuning.birdHorizontalPadding;
+  const top = layout.tuning.birdFlightTopY;
+  const bottom = layout.tuning.birdFlightBottomY;
+
+  if (!target.flyAwayFlag) {
+    if (target.x <= left || target.x >= right) {
+      target.x = Math.min(Math.max(target.x, left), right);
+      target.vx *= -1;
+    }
+    if (target.y <= top) {
+      target.y = top;
+      target.vy = Math.abs(target.vy) * 0.72;
+    } else if (target.y >= bottom) {
+      target.y = bottom;
+      target.vy = -Math.abs(target.vy) * 0.88;
+    }
+  }
+
+  target.direction = target.vx >= 0 ? 1 : -1;
+  target.flight = Math.abs(target.vy) > 120 ? "diag" : "side";
+  target.nesX = canvasToNesXForLayout(target.x, layout);
+  target.nesY = canvasToNesYForLayout(target.y, layout);
+
+  if (target.y < -120 || target.x < -130 || target.x > layout.width + 130) {
+    markEscaped(state, target, performance.now());
+  }
+}
+
+function updateClayTarget(state: RuntimeState, target: TargetEntity) {
+  const dt = FIXED_STEP_MS / 1000;
+  const layout = state.layout;
+  target.vy += layout.tuning.clayGravity * dt;
+  target.x += target.vx * dt;
+  target.y += target.vy * dt;
+  target.nesX = canvasToNesXForLayout(target.x, layout);
+  target.nesY = canvasToNesYForLayout(target.y, layout);
 
   const ageMs = performance.now() - target.createdAtMs;
   const imageIndex = Math.min(Math.floor(ageMs / 260), 11);
@@ -838,7 +1011,7 @@ function updateClayTarget(state: RuntimeState, target: TargetEntity) {
   target.distanceClass = Math.min(Math.floor(imageIndex / 2), 7);
   target.zapperShape = clayZapperShape(state.roundNumber, imageIndex);
 
-  if (target.x < -90 || target.x > CANVAS_WIDTH + 90 || target.y > CANVAS_HEIGHT - 120 || target.y < -90) {
+  if (target.x < -90 || target.x > layout.width + 90 || target.y > layout.height - 80 || target.y < -110) {
     markEscaped(state, target, performance.now());
     stopClayFlyingToneIfNoActiveClays(state);
   }
@@ -850,13 +1023,26 @@ function stopClayFlyingToneIfNoActiveClays(state: RuntimeState) {
   if (!hasFlyingClay) gameAudio.stopLoop("clayPigeonFlying");
 }
 
-function updateFallingDuck(target: TargetEntity) {
+function updateFallingDuck(state: RuntimeState, target: TargetEntity) {
+  if (isPortraitLayout(state.layout)) {
+    const dt = FIXED_STEP_MS / 1000;
+    target.vy = 300;
+    target.vx = target.direction * 42;
+    target.x += target.vx * dt;
+    target.y += target.vy * dt;
+    target.nesX = canvasToNesXForLayout(target.x, state.layout);
+    target.nesY = canvasToNesYForLayout(target.y, state.layout);
+    if (target.y >= state.layout.dogRetrieveTriggerY) playTargetSound(target, "duckGroundHit", "groundSoundPlayed", 0.7);
+    if (target.y > state.layout.height + 80) target.mechanicsState = "clear";
+    return;
+  }
+
   target.nesY = (target.nesY ?? canvasToNesY(target.y)) + 3;
   target.nesX = (target.nesX ?? canvasToNesX(target.x)) + target.direction * 0.25;
   target.vy = 260;
   target.vx = target.direction * 55;
   syncCanvasPosition(target);
-  if (target.y >= DOG_RETRIEVE_TRIGGER_Y) playTargetSound(target, "duckGroundHit", "groundSoundPlayed", 0.7);
+  if (target.y >= state.layout.dogRetrieveTriggerY) playTargetSound(target, "duckGroundHit", "groundSoundPlayed", 0.7);
   if ((target.nesY ?? 0) > NES_HEIGHT + 20) target.mechanicsState = "clear";
 }
 
@@ -894,6 +1080,24 @@ function isTargetUnresolved(target: TargetEntity) {
   );
 }
 
+function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, state: RuntimeState) {
+  if (isPortraitLayout(state.layout)) {
+    const radius = target.kind === "clay" ? state.layout.tuning.clayHitRadius : state.layout.tuning.touchHitRadius;
+    const dx = point.x - target.x;
+    const dy = point.y - target.y;
+    return dx * dx + dy * dy <= radius * radius;
+  }
+
+  const nesPoint = { x: canvasToNesX(point.x), y: canvasToNesY(point.y) };
+  return pointHitsZapperShape(
+    nesPoint.x,
+    nesPoint.y,
+    target.nesX ?? canvasToNesX(target.x),
+    target.nesY ?? canvasToNesY(target.y),
+    target.zapperShape ?? (target.kind === "clay" ? clayZapperShape(state.roundNumber, target.clayImageIndex ?? 0) : duckZapperShapeForRound(state.roundNumber))
+  );
+}
+
 export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -912,7 +1116,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const clayBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef<RuntimeState | null>(null);
   const rafRef = useRef<number | null>(null);
-  const mouseRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 });
+  const mouseRef = useRef({ x: LANDSCAPE_LAYOUT.width / 2, y: LANDSCAPE_LAYOUT.height / 2 });
   const lastHudUpdateRef = useRef(0);
   const pausedRef = useRef(false);
   const pauseStartedAtRef = useRef<number | null>(null);
@@ -924,6 +1128,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const microRevealRef = useRef<MicroReveal>(null);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const [paused, setPaused] = useState(false);
+  const layout = useGameplayLayout();
+
+  useEffect(() => {
+    mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
+  }, [layout.height, layout.width]);
 
   useEffect(() => {
     const canvas = crtCanvasRef.current;
@@ -1206,7 +1415,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     if (!assetReady || !fontReady) return undefined;
     const now = performance.now();
     const targetLimit = isLiveTweetRound ? Math.min(Math.max(tweetsRef.current.length, 1), TARGETS_PER_ROUND) : TARGETS_PER_ROUND;
-    const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound);
+    const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound, layout);
     if (mode === "C") {
       startNextVolley(state, tweetsRef.current, now);
       state.releaseDelayFrames = 0;
@@ -1223,7 +1432,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       gameAudio.stopLoop("clayPigeonFlying");
       stateRef.current = null;
     };
-  }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound]);
+  }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound, layout]);
 
   const draw = useCallback((frameTimeMs: number) => {
     const canvas = canvasRef.current;
@@ -1237,8 +1446,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const isClayMode = state.mode === "C";
+    const isPortrait = isPortraitLayout(state.layout);
 
-    if (isClayMode) {
+    if (isPortrait) {
+      drawPortraitEnvironment(ctx, state.layout, isClayMode);
+    } else if (isClayMode) {
       drawClayEnvironment(ctx, clayBackgroundImageRef.current);
     } else {
       clearScene(ctx, backgroundImageRef.current);
@@ -1267,11 +1479,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
     const retrieveDogState = resolveDogState === "one" || resolveDogState === "two";
     if (state.phase === "resolve" && retrieveDogState && state.retrieveDogTriggeredAtMs === undefined) {
-      const birdsBehindGrass = state.targets.filter((target) => target.kind === "bird" && target.status === "hit" && target.y >= DOG_RETRIEVE_TRIGGER_Y);
+      const birdsBehindGrass = state.targets.filter((target) => target.kind === "bird" && target.status === "hit" && target.y >= state.layout.dogRetrieveTriggerY);
       if (birdsBehindGrass.length > 0) {
         state.retrieveDogTriggeredAtMs = timeMs;
         const averageX = birdsBehindGrass.reduce((sum, target) => sum + target.x, 0) / birdsBehindGrass.length;
-        state.retrieveDogX = Math.min(Math.max(averageX, 90), CANVAS_WIDTH - 90);
+        state.retrieveDogX = Math.min(Math.max(averageX, state.layout.dogSafeX.min), state.layout.dogSafeX.max);
         gameAudio.play("dogRetrieve", 0.78);
       }
     }
@@ -1334,7 +1546,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       }
     }
 
-    if (!isClayMode) {
+    if (!isClayMode && !isPortrait) {
       for (const target of state.targets) {
         if (target.status !== "escaped" && target.fliesBehindTree) {
           drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
@@ -1351,37 +1563,58 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
 
     if (!isClayMode && (shouldShowRetrieveDog || shouldShowLaughDog) && resolveDogState) {
+      const dogOffsetX = isPortrait ? (state.layout.width - CANVAS_WIDTH) / 2 : 0;
+      const dogOffsetY = isPortrait ? state.layout.groundY - FOREGROUND_GRASS_TOP_Y : 0;
+      ctx.save();
+      if (isPortrait) ctx.translate(dogOffsetX, dogOffsetY);
       drawDog(
         ctx,
         image,
         timeMs,
         resolveDogState,
         dogRiseOffset,
-        shouldShowRetrieveDog ? state.retrieveDogX : undefined,
+        shouldShowRetrieveDog && state.retrieveDogX !== undefined ? state.retrieveDogX - dogOffsetX : undefined,
         dogOneBirdImageRef.current,
         mode === "B" ? dogTwoBirdImageRef.current : null
       );
+      ctx.restore();
     }
     if (!isClayMode && introDogBehindGrass) {
-      drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+      if (isPortrait) {
+        ctx.save();
+        ctx.translate((state.layout.width - CANVAS_WIDTH) / 2, state.layout.groundY - FOREGROUND_GRASS_TOP_Y);
+        drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+        ctx.restore();
+      } else {
+        drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+      }
     }
 
-    if (!isClayMode) {
+    if (!isClayMode && !isPortrait) {
       drawMidground(ctx, midgroundImageRef.current);
       drawForeground(ctx, foregroundImageRef.current);
+    } else if (isPortrait) {
+      drawPortraitForeground(ctx, state.layout);
     }
 
     if (!isClayMode && state.phase === "intro" && !introDogBehindGrass) {
-      drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+      if (isPortrait) {
+        ctx.save();
+        ctx.translate((state.layout.width - CANVAS_WIDTH) / 2, state.layout.groundY - FOREGROUND_GRASS_TOP_Y);
+        drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+        ctx.restore();
+      } else {
+        drawIntroDog(ctx, image, introDogElapsedMs, timeMs);
+      }
     }
     drawScoreReveals(ctx, state, timeMs);
     drawSpriteHud(ctx, state, uiImagesRef.current, clayTargetAtlasRef.current);
-    drawMicroRevealPanel(ctx, microRevealRef.current);
+    drawMicroRevealPanel(ctx, microRevealRef.current, state.layout);
     if (pausedRef.current) {
-      drawPauseOverlay(ctx);
+      drawPauseOverlay(ctx, state.layout);
     }
     if (state.phase !== "ended") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
-    crtRendererRef.current?.render(canvas, timeMs);
+    if (!isPortrait) crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
       setMicroReveal(null);
@@ -1405,45 +1638,38 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     };
   }, [assetReady, fontReady, draw]);
 
-  function resolveCanvasPosition(event: React.MouseEvent<HTMLElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const displayX = (event.clientX - rect.left) / rect.width;
-    const displayY = (event.clientY - rect.top) / rect.height;
+  function resolveCanvasPositionFromClient(target: HTMLElement, clientX: number, clientY: number) {
+    const activeLayout = stateRef.current?.layout ?? layout;
+    const rect = target.getBoundingClientRect();
+    const displayX = (clientX - rect.left) / rect.width;
+    const displayY = (clientY - rect.top) / rect.height;
     const sourceUv =
-      !crtUnavailable && event.currentTarget === crtCanvasRef.current
+      !isPortraitLayout(activeLayout) && !crtUnavailable && target === crtCanvasRef.current
         ? mapCrtDisplayUvToSource(displayX, displayY)
         : { x: displayX, y: displayY };
 
     return {
-      x: sourceUv.x * CANVAS_WIDTH,
-      y: sourceUv.y * CANVAS_HEIGHT
+      x: sourceUv.x * activeLayout.width,
+      y: sourceUv.y * activeLayout.height
     };
   }
 
-  function handleMouseMove(event: React.MouseEvent<HTMLElement>) {
-    mouseRef.current = resolveCanvasPosition(event);
+  function handlePointerMove(event: React.PointerEvent<HTMLElement>) {
+    mouseRef.current = resolveCanvasPositionFromClient(event.currentTarget, event.clientX, event.clientY);
   }
 
-  function handleShot(event: React.MouseEvent<HTMLElement>) {
+  function handleShot(point: { x: number; y: number }) {
     if (pausedRef.current) return;
     const state = stateRef.current;
     if (!state || state.phase !== "active" || state.shotsRemaining <= 0) return;
 
-    const point = resolveCanvasPosition(event);
-    const nesPoint = { x: canvasToNesX(point.x), y: canvasToNesY(point.y) };
     state.shotsRemaining -= 1;
     state.shotsFired += 1;
     gameAudio.play("gunShoot", 0.82);
 
     const hit = state.targets.find((target) => {
       if (target.status !== "flying" || target.mechanicsState !== "flying" || !target.shootable) return false;
-      return pointHitsZapperShape(
-        nesPoint.x,
-        nesPoint.y,
-        target.nesX ?? canvasToNesX(target.x),
-        target.nesY ?? canvasToNesY(target.y),
-        target.zapperShape ?? (target.kind === "clay" ? clayZapperShape(state.roundNumber, target.clayImageIndex ?? 0) : duckZapperShapeForRound(state.roundNumber))
-      );
+      return pointHitsTarget(point, target, state);
     });
 
     if (!hit) return;
@@ -1487,18 +1713,24 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
   }
 
-  function handleCanvasClick(event: React.MouseEvent<HTMLElement>) {
+  function handleCanvasPointerDown(event: React.PointerEvent<HTMLElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+
+    const point = resolveCanvasPositionFromClient(event.currentTarget, event.clientX, event.clientY);
+    mouseRef.current = point;
+
     if (pausedRef.current) {
-      const point = resolveCanvasPosition(event);
-      if (pointInRect(point, PAUSE_RESUME_BUTTON)) {
+      const activeLayout = stateRef.current?.layout ?? layout;
+      if (pointInRect(point, activeLayout.pauseResumeButton)) {
         handleResume();
-      } else if (pointInRect(point, PAUSE_QUIT_BUTTON)) {
+      } else if (pointInRect(point, activeLayout.pauseQuitButton)) {
         handleQuit();
       }
       return;
     }
 
-    handleShot(event);
+    handleShot(point);
   }
 
   function handleResume() {
@@ -1510,11 +1742,19 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     onQuit();
   }
 
+  function handlePauseButtonPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const state = stateRef.current;
+    if (!state || state.phase === "ended") return;
+    setPausedState(!pausedRef.current);
+  }
+
   const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
 
   return (
     <div
-      className={`canvas-wrap crt-cabinet play-crt${paused ? " play-paused" : ""}${crtUnavailable ? " crt-fallback" : ""}`}
+      className={`canvas-wrap crt-cabinet play-crt ${layout.className}${paused ? " play-paused" : ""}${crtUnavailable || isPortraitLayout(layout) ? " crt-fallback" : ""}`}
       style={crtStyle}
       aria-label={`${modeLabel(mode)} playfield`}
     >
@@ -1522,24 +1762,32 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
         <canvas
           ref={canvasRef}
           className="game-canvas game-source-canvas"
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          onMouseMove={handleMouseMove}
-          onClick={handleCanvasClick}
+          width={layout.width}
+          height={layout.height}
+          onPointerMove={handlePointerMove}
+          onPointerDown={handleCanvasPointerDown}
         />
         <canvas
           ref={crtCanvasRef}
           className="game-canvas game-crt-canvas"
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          onMouseMove={handleMouseMove}
-          onClick={handleCanvasClick}
+          width={layout.width}
+          height={layout.height}
+          onPointerMove={handlePointerMove}
+          onPointerDown={handleCanvasPointerDown}
           aria-hidden={crtUnavailable}
         />
         <div className="screen-reader-only" aria-live="polite">
           {paused ? "Paused. Press Escape to resume, or click Resume or Quit on the game screen." : microReveal?.text ?? ""}
         </div>
       </div>
+      <button
+        type="button"
+        className="mobile-pause-button"
+        onPointerDown={handlePauseButtonPointerDown}
+        aria-label={paused ? "Resume game" : "Pause game"}
+      >
+        {paused ? "Resume" : "Pause"}
+      </button>
     </div>
   );
 }
