@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
-import { formatDate, truncate } from "@/game/format";
+import { truncate } from "@/game/format";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, wrapPixelText, type Rect } from "@/game/uiDraw";
 import type { RoundResult } from "@/game/types";
@@ -75,10 +75,8 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
   const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet), [result.hits]);
   const isClayRound = result.mode === "C";
   const isArcadeFallbackRound = !isClayRound && !result.isLiveTweetRound;
-  const isPartialLiveRound = result.isLiveTweetRound && result.targetLimit < 10;
   const currentHit = destructiveHits[currentIndex] ?? null;
   const currentTweet = currentHit?.tweet;
-  const showNextRound = result.passed || destructiveHits.length === 0 || isPartialLiveRound;
   const hasTweetReview = Boolean(currentHit && currentTweet);
   const isPortrait = isPortraitLayout(layout);
   const panel = isPortrait ? { x: 24, y: 42, width: 492, height: 876 } : PANEL;
@@ -139,12 +137,12 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
 
       if (hasTweetReview && currentHit && currentTweet) {
         drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 118 : 104, {
-          size: isPortrait ? 18 : 20,
+          size: isPortrait ? 20 : 22,
           color: "#e79a1b",
           align: "center"
         });
         drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 174 : 148, {
-          size: isPortrait ? 13 : 17,
+          size: isPortrait ? 15 : 19,
           color: "#70e27b",
           align: "center"
         });
@@ -153,13 +151,9 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
           stroke: "#2a2a34",
           lineWidth: 4
         });
-        drawPixelText(ctx, formatDate(currentTweet.createdAt), content.x + 24, content.y + 24, {
-          size: isPortrait ? 12 : 13,
-          color: "#e79a1b"
-        });
-        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 72, content.width - 48, isPortrait ? 31 : 36, isPortrait ? 7 : 5, isPortrait ? 17 : 20);
+        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 34, content.width - 48, isPortrait ? 35 : 40, isPortrait ? 7 : 5, isPortrait ? 19 : 22);
         drawPixelText(ctx, `${currentTweet.likes} likes  ${currentTweet.reposts} reposts  ${currentTweet.replies} replies`, content.x + 24, content.y + content.height - 34, {
-          size: isPortrait ? 10 : 12,
+          size: isPortrait ? 14 : 16,
           color: "#e79a1b"
         });
       } else {
@@ -221,9 +215,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       }
 
       drawButton(ctx, quitButton, "QUIT");
-      if (showNextRound) {
-        drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true);
-      }
+      drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true);
     },
     [
       currentHit,
@@ -241,8 +233,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       quitButton,
       result.hits.length,
       result.roundNumber,
-      result.score,
-      showNextRound
+      result.score
     ]
   );
 
@@ -269,11 +260,9 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         <button className="review-hit-button" type="button" style={rectStyle(quitButton, layout)} onClick={onChangeGame}>
           Quit
         </button>
-        {showNextRound ? (
-          <button className="review-hit-button" type="button" style={rectStyle(nextRoundButton, layout)} onClick={onNextRound}>
-            Next round
-          </button>
-        ) : null}
+        <button className="review-hit-button" type="button" style={rectStyle(nextRoundButton, layout)} onClick={onNextRound}>
+          Next round
+        </button>
       </div>
     </ArcadeScreenCanvas>
   );
