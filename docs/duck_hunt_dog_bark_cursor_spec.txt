@@ -1,0 +1,362 @@
+DUCK HUNT DOG BARK IMPLEMENTATION SPEC
+Cursor-ready plaintext notes
+Scope: Single-player Game 1, Game 2, and Clay Shooting
+
+============================================================
+1. Purpose
+============================================================
+
+Implement the dog bark behavior from Duck Hunt accurately enough that it feels tied to the original dog intro sequence.
+
+Important correction:
+The dog should not bark continuously while walking in. The bark belongs to the dog's flush/jump-into-grass intro state, right before the duck or ducks appear.
+
+Use this behavior only in:
+
+- Game 1: one duck
+- Game 2: two ducks
+
+Do not use the walking dog or dog bark in:
+
+- Clay Shooting
+
+Clay Shooting has no dog intro.
+
+============================================================
+2. High-level dog intro sequence
+============================================================
+
+For Game 1 and Game 2, the round intro should follow this rough order:
+
+1. Dog appears at left side of screen.
+2. Dog walks through the grass.
+3. Dog sniffs or pauses as part of the intro script.
+4. Dog enters the bark-capable flush/jump state.
+5. Dog barks on a frame counter while jumping or flushing into the grass.
+6. Dog disappears into the grass.
+7. Duck targets are released.
+
+The bark is not a footstep sound.
+The bark is not looped for the whole walk.
+The bark is a timed event during the short flush/jump state.
+
+Recommended state names:
+
+```ts
+enum DogState {
+  Inactive,
+  WalkIn,
+  Sniff,
+  PrepJump,
+  FlushIntoGrass,
+  Hidden,
+  SpawnTargets
+}
+```
+
+============================================================
+3. Bark timing
+============================================================
+
+The bark-capable state starts when the dog begins the flush/jump-into-grass portion of the intro.
+
+On entering this state:
+
+```ts
+dog.barkCounter = 0x04;
+```
+
+Each frame:
+
+```ts
+dog.barkCounter -= 1;
+
+if (dog.barkCounter === 0) {
+  audio.queue("dog_bark");
+  dog.barkCounter = 0x10;
+}
+```
+
+At 60 fps, this gives:
+
+- First bark: 4 frames after entering FlushIntoGrass
+- Second bark: 16 frames after the first bark
+- Third bark: 16 frames after the second bark
+
+Approximate times after entering FlushIntoGrass:
+
+```text
+Frame 4   = 0.067 sec
+Frame 20  = 0.333 sec
+Frame 36  = 0.600 sec
+```
+
+The bark-capable flush state is short, roughly under one second. In practice, this usually produces about three bark triggers.
+
+============================================================
+4. Audio asset mapping
+============================================================
+
+Use the uploaded sound file:
+
+```text
+dog_bark = Duck Hunt SFX (8).wav
+```
+
+This is the bark sound.
+
+Do not use:
+
+```text
+Duck Hunt SFX (11).wav
+```
+
+That one maps to the dog laugh after missed ducks.
+
+Do not use:
+
+```text
+Duck Hunt SFX (12).wav
+```
+
+That one maps to the gunshot.
+
+Do not use:
+
+```text
+Duck Hunt SFX (7).wav
+```
+
+That one maps to the duck quack when a duck is hit.
+
+============================================================
+5. Handling long bark samples
+============================================================
+
+The original game queues short bark events. A modern WAV file may be longer than the original DMC-style bark unit.
+
+Use one of these policies.
+
+Preferred policy for authenticity:
+
+```text
+Trim or synthesize a short dog bark sample, then trigger it at frames 4, 20, and 36.
+```
+
+Safer policy if using the full uploaded WAV:
+
+```text
+Play the full bark sample once at the first bark trigger.
+Suppress overlapping bark retriggers until the sample has ended or until the dog leaves FlushIntoGrass.
+```
+
+Do not allow messy overlapping barks unless the sample is short enough for the original cadence.
+
+Recommended implementation:
+
+```ts
+function queueDogBark(audio: AudioSystem) {
+  audio.playOneShot("dog_bark", {
+    allowOverlap: false,
+    interruptSameSound: false
+  });
+}
+```
+
+============================================================
+6. Full dog intro implementation skeleton
+============================================================
+
+```ts
+type GameMode = "ONE_DUCK" | "TWO_DUCKS" | "CLAY_SHOOTING";
+
+interface Dog {
+  state: DogState;
+  x: number;
+  y: number;
+  animFrame: number;
+  animTimer: number;
+  scriptIndex: number;
+  stateFrame: number;
+  barkCounter: number;
+}
+
+function startRoundIntro(mode: GameMode, dog: Dog) {
+  if (mode === "CLAY_SHOOTING") {
+    dog.state = DogState.Inactive;
+    startClayShootingRound();
+    return;
+  }
+
+  dog.state = DogState.WalkIn;
+  dog.x = DOG_START_X;
+  dog.y = DOG_GRASS_Y;
+  dog.animFrame = 0;
+  dog.animTimer = 0;
+  dog.scriptIndex = 0;
+  dog.stateFrame = 0;
+  dog.barkCounter = 0;
+}
+
+function updateDogIntro(mode: GameMode, dog: Dog, audio: AudioSystem) {
+  if (mode === "CLAY_SHOOTING") return;
+
+  switch (dog.state) {
+    case DogState.Inactive:
+      return;
+
+    case DogState.WalkIn:
+      updateDogWalkIn(dog);
+      break;
+
+    case DogState.Sniff:
+      updateDogSniff(dog);
+      break;
+
+    case DogState.PrepJump:
+      updateDogPrepJump(dog);
+      break;
+
+    case DogState.FlushIntoGrass:
+      updateDogFlushIntoGrass(dog, audio);
+      break;
+
+    case DogState.Hidden:
+      dog.state = DogState.SpawnTargets;
+      break;
+
+    case DogState.SpawnTargets:
+      spawnDuckTargetsForMode(mode);
+      dog.state = DogState.Inactive;
+      break;
+  }
+}
+
+function enterDogFlushIntoGrass(dog: Dog) {
+  dog.state = DogState.FlushIntoGrass;
+  dog.stateFrame = 0;
+  dog.barkCounter = 0x04;
+  dog.scriptIndex = 0;
+  dog.animTimer = 0;
+}
+
+function updateDogFlushIntoGrass(dog: Dog, audio: AudioSystem) {
+  dog.stateFrame += 1;
+
+  dog.barkCounter -= 1;
+
+  if (dog.barkCounter === 0) {
+    queueDogBark(audio);
+    dog.barkCounter = 0x10;
+  }
+
+  advanceDogFlushAnimation(dog);
+
+  if (dogFlushAnimationFinished(dog)) {
+    dog.state = DogState.Hidden;
+    dog.barkCounter = 0;
+  }
+}
+```
+
+============================================================
+7. Relationship to duck spawning
+============================================================
+
+Duck spawning should happen after the dog disappears into the grass.
+
+Game 1:
+
+```text
+Dog intro plays
+Dog bark sequence happens during FlushIntoGrass
+Dog hides
+Spawn one duck
+Give player 3 shots
+```
+
+Game 2:
+
+```text
+Dog intro plays
+Dog bark sequence happens during FlushIntoGrass
+Dog hides
+Spawn two ducks
+Give player 3 shots total for the pair
+```
+
+Clay Shooting:
+
+```text
+No dog intro
+No dog bark
+Spawn clay pigeons directly using clay launcher behavior
+Give player 3 shots total for the pair
+```
+
+============================================================
+8. Audio event table
+============================================================
+
+```text
+Event: dog_bark
+Mode: Game 1 and Game 2 only
+State: DogState.FlushIntoGrass
+First trigger: 4 frames after entering state
+Repeat interval: 16 frames
+Typical trigger count: 3
+Asset: Duck Hunt SFX (8).wav
+Overlap: false unless sample is trimmed short
+```
+
+Related events that should not be confused with bark:
+
+```text
+Event: dog_laugh
+Asset: Duck Hunt SFX (11).wav
+When: missed duck result, dog pops up laughing
+
+Event: duck_quack
+Asset: Duck Hunt SFX (7).wav
+When: duck is hit and enters hit/fall transition
+
+Event: gunshot
+Asset: Duck Hunt SFX (12).wav
+When: player pulls trigger and shot is accepted
+```
+
+============================================================
+9. Acceptance checks
+============================================================
+
+Use these checks to verify behavior.
+
+1. In Game 1, the dog should walk in without barking for the whole walk.
+2. In Game 1, the bark should occur only during the short flush/jump-into-grass phase.
+3. In Game 2, the dog intro and bark timing should match Game 1.
+4. In Clay Shooting, no dog bark should play.
+5. A bark should not play when the player shoots.
+6. A bark should not play when a duck is hit.
+7. A bark should not play when the dog laughs after missed ducks.
+8. The first bark should occur almost immediately after entering FlushIntoGrass, about 4 frames later.
+9. If retriggering is enabled, follow the 16-frame interval.
+10. If using the full uploaded WAV, prevent ugly overlap by suppressing repeated playback while the sample is still playing.
+
+============================================================
+10. Minimal Cursor task
+============================================================
+
+Implement a DogIntro state machine for Game 1 and Game 2.
+
+Requirements:
+
+- Add DogState.FlushIntoGrass.
+- On entry, set barkCounter to 0x04.
+- While in FlushIntoGrass, decrement barkCounter each frame.
+- When barkCounter reaches 0, play dog_bark and reset barkCounter to 0x10.
+- End the state when the flush animation finishes.
+- Spawn duck targets only after the dog is hidden.
+- Do not run this dog intro logic in Clay Shooting.
+- Use Duck Hunt SFX (8).wav for dog_bark.
+- Do not use dog_laugh, duck_quack, or gunshot assets for bark.
+

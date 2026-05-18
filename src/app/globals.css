@@ -360,10 +360,6 @@ button {
   display: none;
 }
 
-.mobile-pause-button {
-  display: none;
-}
-
 .screen-reader-only {
   position: absolute;
   width: 1px;
@@ -919,33 +915,6 @@ button {
   .play-crt,
   .arcade-screen-canvas {
     touch-action: none;
-  }
-
-  .mobile-pause-button {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 30;
-    display: inline-flex;
-    min-width: 78px;
-    min-height: 42px;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid var(--stroke);
-    border-radius: 999px;
-    background: rgba(5, 5, 8, 0.78);
-    color: #fff9e8;
-    font-family: var(--tweet-font);
-    font-size: 8px;
-    line-height: 1;
-    text-transform: uppercase;
-    text-shadow: none;
-    touch-action: manipulation;
-  }
-
-  .play-paused .mobile-pause-button {
-    background: var(--accent);
-    color: #09090d;
   }
 
   .title-option {

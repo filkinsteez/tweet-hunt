@@ -53,8 +53,6 @@ const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: numbe
   B: { headingY: 532, labelY: 580 },
   C: { headingY: 690, labelY: 738 }
 };
-const MOBILE_TITLE_SELECTION_GAP = 18;
-const MOBILE_TITLE_SELECTION_Y_OFFSET = -2;
 const MOBILE_TITLE_ART = { y: 70, width: 470 };
 const MOBILE_TITLE_TOP_SCORE_Y = 858;
 const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
@@ -450,24 +448,6 @@ export function TweetHuntApp() {
             color: "#fff9e8",
             align: "center"
           });
-        }
-        if (titleSelectionMode) {
-          const selection = images.selection;
-          const row = MOBILE_TITLE_MODE_ROWS[titleSelectionMode];
-          const label = TITLE_MODE_LABELS[titleSelectionMode];
-          const labelSize = titleSelectionMode === "C" ? MOBILE_TITLE_CLAY_LABEL_SIZE : MOBILE_TITLE_LABEL_SIZE;
-          ctx.save();
-          ctx.font = `${labelSize}px 'Press Start 2P', monospace`;
-          const labelWidth = ctx.measureText(label).width;
-          ctx.restore();
-          const selectionX = Math.round(layout.width / 2 - labelWidth / 2 - TITLE_SELECTION_SIZE.width - MOBILE_TITLE_SELECTION_GAP);
-          const selectionY = row.labelY + Math.round((labelSize - TITLE_SELECTION_SIZE.height) / 2) + MOBILE_TITLE_SELECTION_Y_OFFSET;
-          if (selection) {
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(selection, selectionX, selectionY, TITLE_SELECTION_SIZE.width, TITLE_SELECTION_SIZE.height);
-          } else {
-            drawPixelText(ctx, ">", selectionX, selectionY - 3, { size: 24, color: "#fff9e8" });
-          }
         }
         return;
       }

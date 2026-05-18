@@ -32,7 +32,8 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
-  const useCrt = presentation === "crt";
+  const isPortrait = layout.id === "portrait";
+  const useCrt = presentation === "crt" && !isPortrait;
 
   useEffect(() => {
     mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
@@ -129,7 +130,7 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
       if (!canvas || !ctx) return;
 
       drawFrame({ ctx, images: imagesRef.current, timeMs });
-      drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
+      if (!isPortrait) drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
       if (useCrt) crtRendererRef.current?.render(canvas, timeMs);
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -138,7 +139,7 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [assetReady, fontReady, drawFrame, layout.height, layout.width, useCrt]);
+  }, [assetReady, fontReady, drawFrame, isPortrait, layout.height, layout.width, useCrt]);
 
   const directSource = !useCrt || crtUnavailable;
 

@@ -92,7 +92,7 @@ export const PORTRAIT_LAYOUT: GameplayLayoutProfile = {
     hit: { x: 152, y: 870 },
     score: { x: 314, y: 24 }
   },
-  microRevealPanel: { x: 18, y: 82, width: 504, height: 150 },
+  microRevealPanel: { x: 10, y: 8, width: 520, height: 170 },
   pausePanel: { x: 46, y: 278, width: 448, height: 330 },
   pauseQuitButton: { x: 86, y: 504, width: 154, height: 58 },
   pauseResumeButton: { x: 290, y: 504, width: 164, height: 58 },

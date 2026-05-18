@@ -59,6 +59,25 @@ class GameAudio {
     }
   }
 
+  playIfIdle(key: GameSoundKey, volume = 0.75) {
+    if (typeof window === "undefined") return;
+    this.initialize();
+    if (!this.unlocked) return;
+
+    const pool = this.pools.get(key);
+    if (!pool || pool.length === 0) return;
+    const audio = pool.find((candidate) => candidate.paused || candidate.ended);
+    if (!audio) return;
+
+    try {
+      audio.currentTime = 0;
+      audio.volume = volume;
+      void audio.play().catch(() => undefined);
+    } catch {
+      // Audio should never break gameplay.
+    }
+  }
+
   startLoop(key: GameSoundKey, volume = 0.55) {
     if (typeof window === "undefined") return;
     this.initialize();

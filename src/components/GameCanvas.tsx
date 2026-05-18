@@ -129,6 +129,7 @@ type RuntimeState = {
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
   dogLaughSoundPlayed: boolean;
+  dogBarkWindowStarted: boolean;
   dogBarkCounterFrames: number;
   scoreReveals: Array<{
     id: string;
@@ -200,7 +201,10 @@ const BIRD_FLIGHT_FLOOR_Y = FOREGROUND_GRASS_TOP_Y - 10;
 const MIN_BIRD_SCREEN_TIME_MS = 1800;
 const DOG_BARK_INITIAL_FRAMES = 4;
 const DOG_BARK_REPEAT_FRAMES = 16;
+const DOG_INTRO_FLUSH_START_MS = 3600 + 500;
+const DOG_INTRO_FLUSH_END_MS = DOG_INTRO_FLUSH_START_MS + 920;
 const DUCK_FLAP_INTERVAL_FRAMES = 8;
+const PORTRAIT_FRAME_INTERVAL_MS = 1000 / 30;
 
 const BUTTON_TEXT_SIZE = 16;
 
@@ -242,6 +246,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
     dogLaughSoundPlayed: false,
+    dogBarkWindowStarted: false,
     dogBarkCounterFrames: DOG_BARK_INITIAL_FRAMES,
     scoreReveals: [],
     ended: false
@@ -438,10 +443,10 @@ function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal
   const panel = layout.microRevealPanel;
   const textSize = layout.id === "portrait" ? 13 : 14;
   const lineHeight = layout.id === "portrait" ? 25 : 28;
-  const metricsSize = layout.id === "portrait" ? 10 : 11;
+  const metricsSize = layout.id === "portrait" ? 13 : 11;
 
   drawPixelBeveledPanel(ctx, panel, {
-    fill: "rgba(10, 10, 14, 0.9)",
+    fill: layout.id === "portrait" ? "#0a0a0e" : "rgba(10, 10, 14, 0.9)",
     stroke: "#e79a1b",
     lineWidth: 4,
     bevel: 12
@@ -799,10 +804,18 @@ function advanceFixedStep(state: RuntimeState, now: number) {
   state.fixedFrameCounter += 1;
 
   if (state.phase === "intro" && state.mode !== "C") {
-    state.dogBarkCounterFrames -= 1;
-    if (state.dogBarkCounterFrames <= 0) {
-      gameAudio.play("dogBark", 0.72);
-      state.dogBarkCounterFrames = DOG_BARK_REPEAT_FRAMES;
+    const introElapsedMs = now - state.phaseStartedAtMs;
+    const isFlushWindow = introElapsedMs >= DOG_INTRO_FLUSH_START_MS && introElapsedMs < DOG_INTRO_FLUSH_END_MS;
+    if (isFlushWindow) {
+      if (!state.dogBarkWindowStarted) {
+        state.dogBarkWindowStarted = true;
+        state.dogBarkCounterFrames = DOG_BARK_INITIAL_FRAMES;
+      }
+      state.dogBarkCounterFrames -= 1;
+      if (state.dogBarkCounterFrames <= 0) {
+        gameAudio.playIfIdle("dogBark", 0.72);
+        state.dogBarkCounterFrames = DOG_BARK_REPEAT_FRAMES;
+      }
     }
     return;
   }
@@ -1127,6 +1140,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const clayBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef<RuntimeState | null>(null);
   const rafRef = useRef<number | null>(null);
+  const lastRenderedFrameAtRef = useRef(0);
   const mouseRef = useRef({ x: LANDSCAPE_LAYOUT.width / 2, y: LANDSCAPE_LAYOUT.height / 2 });
   const lastHudUpdateRef = useRef(0);
   const pausedRef = useRef(false);
@@ -1151,6 +1165,13 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   }, [layout.height, layout.width]);
 
   useEffect(() => {
+    if (isPortraitLayout(layout)) {
+      crtRendererRef.current?.dispose();
+      crtRendererRef.current = null;
+      setCrtUnavailable(false);
+      return undefined;
+    }
+
     const canvas = crtCanvasRef.current;
     if (!canvas) return undefined;
 
@@ -1167,7 +1188,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       setCrtUnavailable(true);
       return undefined;
     }
-  }, []);
+  }, [layout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1643,7 +1664,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     if (pausedRef.current) {
       drawPauseOverlay(ctx, state.layout);
     }
-    if (state.phase !== "ended") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
+    if (!isPortrait && state.phase !== "ended") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
     if (!isPortrait) crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
@@ -1658,15 +1679,21 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     if (!assetReady || !fontReady) return undefined;
 
     const tick = (timeMs: number) => {
+      if (isPortraitLayout(layout) && timeMs - lastRenderedFrameAtRef.current < PORTRAIT_FRAME_INTERVAL_MS) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastRenderedFrameAtRef.current = timeMs;
       draw(timeMs);
       rafRef.current = requestAnimationFrame(tick);
     };
 
+    lastRenderedFrameAtRef.current = 0;
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [assetReady, fontReady, draw]);
+  }, [assetReady, fontReady, draw, layout]);
 
   function resolveCanvasPositionFromClient(target: HTMLElement, clientX: number, clientY: number) {
     const activeLayout = stateRef.current?.layout ?? layout;
@@ -1776,14 +1803,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     onQuit();
   }
 
-  function handlePauseButtonPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    const state = stateRef.current;
-    if (!state || state.phase === "ended") return;
-    setPausedState(!pausedRef.current);
-  }
-
   const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
 
   return (
@@ -1814,14 +1833,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
           {paused ? "Paused. Press Escape to resume, or click Resume or Quit on the game screen." : microReveal?.text ?? ""}
         </div>
       </div>
-      <button
-        type="button"
-        className="mobile-pause-button"
-        onPointerDown={handlePauseButtonPointerDown}
-        aria-label={paused ? "Resume game" : "Pause game"}
-      >
-        {paused ? "Resume" : "Pause"}
-      </button>
     </div>
   );
 }
