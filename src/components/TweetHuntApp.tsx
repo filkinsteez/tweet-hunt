@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
 import titleSelectionAsset from "../../Assets/Sprites/UI/UI_title_selection.jpg";
-import welcomeAsset from "../../Assets/Sprites/UI/welcome_screen.jpg";
+import welcomePlayAsset from "../../Assets/Sprites/UI/welcome_screen_play.png";
+import welcomeTitleAsset from "../../Assets/Sprites/UI/tweet_hunt_title.png";
 import { ArcadeRoundReview } from "./ArcadeRoundReview";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { GameCanvas } from "./GameCanvas";
 import { TARGETS_PER_ROUND } from "@/game/constants";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
-import { isPortraitLayout } from "@/game/layout";
+import { isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { selectTweetCandidates } from "@/game/mockTweets";
 import { drawFullscreenImage, drawPixelText } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
@@ -48,10 +49,54 @@ const TITLE_MODE_HEADINGS: Record<GameMode, string> = {
   C: "GAME C"
 };
 const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: number }> = {
-  A: { headingY: 352, labelY: 394 },
-  B: { headingY: 508, labelY: 550 },
-  C: { headingY: 664, labelY: 706 }
+  A: { headingY: 374, labelY: 422 },
+  B: { headingY: 532, labelY: 580 },
+  C: { headingY: 690, labelY: 738 }
 };
+const MOBILE_TITLE_SELECTION_GAP = 18;
+const MOBILE_TITLE_SELECTION_Y_OFFSET = -2;
+const MOBILE_TITLE_ART = { y: 70, width: 470 };
+const MOBILE_TITLE_TOP_SCORE_Y = 858;
+const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
+const MOBILE_TITLE_HEADING_SIZE = 23;
+const MOBILE_TITLE_LABEL_SIZE = 31;
+const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
+const MOBILE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; width: number; height: number }> = {
+  A: { x: 70, y: 348, width: 400, height: 128 },
+  B: { x: 70, y: 506, width: 400, height: 128 },
+  C: { x: 70, y: 664, width: 400, height: 128 }
+};
+const LANDSCAPE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; width: number; height: number }> = {
+  A: { x: 211, y: 407, width: 634, height: 44 },
+  B: { x: 211, y: 454, width: 634, height: 44 },
+  C: { x: 211, y: 501, width: 634, height: 44 }
+};
+
+function fitImageWidth(image: HTMLImageElement | undefined, width: number) {
+  if (!image) return null;
+  const scale = width / image.naturalWidth;
+  return {
+    width: Math.round(width),
+    height: Math.round(image.naturalHeight * scale)
+  };
+}
+
+function drawCenteredImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement | undefined, centerX: number, y: number, width: number) {
+  const size = fitImageWidth(image, width);
+  if (!image || !size) return null;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(image, Math.round(centerX - size.width / 2), Math.round(y), size.width, size.height);
+  return size;
+}
+
+function canvasRectStyle(layout: GameplayLayoutProfile, rect: { x: number; y: number; width: number; height: number }): CSSProperties {
+  return {
+    left: `${(rect.x / layout.width) * 100}%`,
+    top: `${(rect.y / layout.height) * 100}%`,
+    width: `${(rect.width / layout.width) * 100}%`,
+    height: `${(rect.height / layout.height) * 100}%`
+  };
+}
 
 export function TweetHuntApp() {
   const layout = useGameplayLayout();
@@ -305,52 +350,125 @@ export function TweetHuntApp() {
   const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
-  const welcomeScreenImages = useMemo(() => ({ background: welcomeAsset.src }), []);
-  const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src }), []);
+  const welcomeScreenImages = useMemo(() => ({ title: welcomeTitleAsset.src, play: welcomePlayAsset.src }), []);
+  const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src, title: welcomeTitleAsset.src }), []);
   const drawWelcomeScreen = useCallback(({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
-    drawFullscreenImage(ctx, images.background);
-  }, []);
+    const isPortrait = isPortraitLayout(layout);
+    ctx.fillStyle = "#02030a";
+    ctx.fillRect(0, 0, layout.width, layout.height);
+    const centerX = layout.width / 2;
+    const introLines = ["TWEET HUNT IS AN", "EXPERIMENTAL GAME", "FROM ERIC FILKINS."];
+    const actionLines = ["SHOOT FAKE BIRDS.", "DELETE REAL TWEETS."];
+
+    if (isPortrait) {
+      const titleWidth = 470;
+      const titleY = 70;
+      const bodyGapFromTitle = 120;
+      const bodySize = 25;
+      const bodyLineHeight = 45;
+      const groupGap = 100;
+      const buttonGap = 100;
+      const playWidth = 230;
+      const titleSize = fitImageWidth(images.title, titleWidth);
+      const introTextHeight = bodySize + (introLines.length - 1) * bodyLineHeight;
+      const actionTextHeight = bodySize + (actionLines.length - 1) * bodyLineHeight;
+      let y = Math.round(titleY + (titleSize?.height ?? 0) + bodyGapFromTitle);
+
+      drawCenteredImage(ctx, images.title, centerX, titleY, titleWidth);
+      for (const [index, line] of introLines.entries()) {
+        drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
+          size: bodySize,
+          color: "#fff9e8",
+          align: "center"
+        });
+      }
+      y += introTextHeight + groupGap;
+      for (const [index, line] of actionLines.entries()) {
+        drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
+          size: bodySize,
+          color: "#fff9e8",
+          align: "center"
+        });
+      }
+      y += actionTextHeight + buttonGap;
+      drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+      return;
+    }
+
+    const titleWidth = 470;
+    const titleY = 38;
+    const bodyGapFromTitle = 24;
+    const bodySize = 24;
+    const bodyLineHeight = 43;
+    const groupGap = 44;
+    const buttonGap = 42;
+    const playWidth = 270;
+    const titleSize = fitImageWidth(images.title, titleWidth);
+    const introTextHeight = bodySize + (introLines.length - 1) * bodyLineHeight;
+    const actionTextHeight = bodySize + (actionLines.length - 1) * bodyLineHeight;
+    let y = Math.round(titleY + (titleSize?.height ?? 0) + bodyGapFromTitle);
+
+    drawCenteredImage(ctx, images.title, centerX, titleY, titleWidth);
+    for (const [index, line] of introLines.entries()) {
+      drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
+        size: bodySize,
+        color: "#fff9e8",
+        align: "center"
+      });
+    }
+    y += introTextHeight + groupGap;
+    for (const [index, line] of actionLines.entries()) {
+      drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
+        size: bodySize,
+        color: "#fff9e8",
+        align: "center"
+      });
+    }
+    y += actionTextHeight + buttonGap;
+    drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+  }, [layout]);
   const drawTitleScreen = useCallback(
     ({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
       if (isPortraitLayout(layout)) {
         ctx.fillStyle = "#02030a";
         ctx.fillRect(0, 0, layout.width, layout.height);
-        drawPixelText(ctx, "TWEET", layout.width / 2, 104, {
-          size: 42,
-          color: "#e79a1b",
-          align: "center"
-        });
-        drawPixelText(ctx, "HUNT", layout.width / 2, 166, {
-          size: 42,
-          color: "#fff9e8",
-          align: "center"
-        });
-        drawPixelText(ctx, `TOP SCORE ${titleTopScore}`, layout.width / 2, 254, {
-          size: 14,
+        drawCenteredImage(ctx, images.title, layout.width / 2, MOBILE_TITLE_ART.y, MOBILE_TITLE_ART.width);
+        drawPixelText(ctx, `TOP SCORE ${titleTopScore}`, layout.width / 2, MOBILE_TITLE_TOP_SCORE_Y, {
+          size: MOBILE_TITLE_TOP_SCORE_SIZE,
           color: "#70e27b",
           align: "center"
         });
         for (const mode of ["A", "B", "C"] as const) {
           const row = MOBILE_TITLE_MODE_ROWS[mode];
           drawPixelText(ctx, TITLE_MODE_HEADINGS[mode], layout.width / 2, row.headingY, {
-            size: 18,
+            size: MOBILE_TITLE_HEADING_SIZE,
             color: "#e79a1b",
             align: "center"
           });
           drawPixelText(ctx, TITLE_MODE_LABELS[mode], layout.width / 2, row.labelY, {
-            size: mode === "C" ? 20 : 24,
+            size: mode === "C" ? MOBILE_TITLE_CLAY_LABEL_SIZE : MOBILE_TITLE_LABEL_SIZE,
             color: "#fff9e8",
             align: "center"
           });
         }
         if (titleSelectionMode) {
-          drawPixelText(ctx, ">", 118, MOBILE_TITLE_MODE_ROWS[titleSelectionMode].labelY - 1, { size: 24, color: "#e79a1b" });
+          const selection = images.selection;
+          const row = MOBILE_TITLE_MODE_ROWS[titleSelectionMode];
+          const label = TITLE_MODE_LABELS[titleSelectionMode];
+          const labelSize = titleSelectionMode === "C" ? MOBILE_TITLE_CLAY_LABEL_SIZE : MOBILE_TITLE_LABEL_SIZE;
+          ctx.save();
+          ctx.font = `${labelSize}px 'Press Start 2P', monospace`;
+          const labelWidth = ctx.measureText(label).width;
+          ctx.restore();
+          const selectionX = Math.round(layout.width / 2 - labelWidth / 2 - TITLE_SELECTION_SIZE.width - MOBILE_TITLE_SELECTION_GAP);
+          const selectionY = row.labelY + Math.round((labelSize - TITLE_SELECTION_SIZE.height) / 2) + MOBILE_TITLE_SELECTION_Y_OFFSET;
+          if (selection) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(selection, selectionX, selectionY, TITLE_SELECTION_SIZE.width, TITLE_SELECTION_SIZE.height);
+          } else {
+            drawPixelText(ctx, ">", selectionX, selectionY - 3, { size: 24, color: "#fff9e8" });
+          }
         }
-        drawPixelText(ctx, "TAP TO PLAY", layout.width / 2, 840, {
-          size: 13,
-          color: "#e79a1b",
-          align: "center"
-        });
         return;
       }
 
@@ -440,6 +558,7 @@ export function TweetHuntApp() {
           : "Authorize with X";
 
     const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
+    const titleOptionRects = isPortraitLayout(layout) ? MOBILE_TITLE_OPTION_RECTS : LANDSCAPE_TITLE_OPTION_RECTS;
 
     return (
       <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
@@ -450,6 +569,7 @@ export function TweetHuntApp() {
               <button
                 className="title-option title-option-a"
                 type="button"
+                style={canvasRectStyle(layout, titleOptionRects.A)}
                 onPointerEnter={() => setActiveTitleMode("A")}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
                 onFocus={() => setActiveTitleMode("A")}
@@ -461,6 +581,7 @@ export function TweetHuntApp() {
               <button
                 className="title-option title-option-b"
                 type="button"
+                style={canvasRectStyle(layout, titleOptionRects.B)}
                 onPointerEnter={() => setActiveTitleMode("B")}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
                 onFocus={() => setActiveTitleMode("B")}
@@ -472,6 +593,7 @@ export function TweetHuntApp() {
               <button
                 className="title-option title-option-c"
                 type="button"
+                style={canvasRectStyle(layout, titleOptionRects.C)}
                 onPointerEnter={() => setActiveTitleMode("C")}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
                 onFocus={() => setActiveTitleMode("C")}

@@ -139,9 +139,6 @@ button {
 
 .title-option {
   position: absolute;
-  left: 22%;
-  right: 12%;
-  height: 6%;
   border: 0;
   background: transparent;
   color: transparent;
@@ -149,18 +146,6 @@ button {
 
 .title-option:focus-visible {
   outline: none;
-}
-
-.title-option-a {
-  top: 56.5%;
-}
-
-.title-option-b {
-  top: 63.5%;
-}
-
-.title-option-c {
-  top: 70.5%;
 }
 
 .grid {
@@ -964,30 +949,11 @@ button {
   }
 
   .title-option {
-    left: 12%;
-    right: 6%;
-    min-height: 30px;
-    transform: translateY(-10%);
+    touch-action: manipulation;
   }
 
   .layout-portrait .title-option {
-    left: 24%;
-    right: 12%;
-    height: 8.5%;
-    min-height: 58px;
     transform: none;
-  }
-
-  .layout-portrait .title-option-a {
-    top: 39%;
-  }
-
-  .layout-portrait .title-option-b {
-    top: 52.5%;
-  }
-
-  .layout-portrait .title-option-c {
-    top: 66%;
   }
 
   .review-hit-button {

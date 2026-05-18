@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
-import { CANVAS_HEIGHT, CANVAS_WIDTH } from "@/game/constants";
-import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, wrapPixelText, type Rect } from "@/game/uiDraw";
@@ -18,12 +16,12 @@ type Props = {
 
 const EMPTY_IMAGES = {};
 const PANEL: Rect = { x: 56, y: 42, width: 848, height: 636 };
-const CONTENT: Rect = { x: 112, y: 170, width: 736, height: 300 };
+const CONTENT: Rect = { x: 128, y: 196, width: 704, height: 300 };
 const SUMMARY_STATS_PANEL: Rect = { x: 150, y: 284, width: 660, height: 162 };
-const PREV_BUTTON: Rect = { x: 72, y: 276, width: 56, height: 80 };
-const NEXT_BUTTON: Rect = { x: 832, y: 276, width: 56, height: 80 };
-const QUIT_BUTTON: Rect = { x: 190, y: 520, width: 190, height: 64 };
-const NEXT_ROUND_BUTTON: Rect = { x: 430, y: 520, width: 340, height: 64 };
+const PREV_BUTTON: Rect = { x: 70, y: 306, width: 56, height: 80 };
+const NEXT_BUTTON: Rect = { x: 834, y: 306, width: 56, height: 80 };
+const QUIT_BUTTON: Rect = { x: 190, y: 542, width: 190, height: 64 };
+const NEXT_ROUND_BUTTON: Rect = { x: 430, y: 542, width: 340, height: 64 };
 const BUTTON_TEXT_SIZE = 16;
 const SUMMARY_ROUND_Y = 160;
 const SUMMARY_MODE_Y = 210;
@@ -80,14 +78,13 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
   const isPartialLiveRound = result.isLiveTweetRound && result.targetLimit < 10;
   const currentHit = destructiveHits[currentIndex] ?? null;
   const currentTweet = currentHit?.tweet;
-  const currentEngagement = currentTweet ? totalTweetEngagement(currentTweet) : 0;
   const showNextRound = result.passed || destructiveHits.length === 0 || isPartialLiveRound;
   const hasTweetReview = Boolean(currentHit && currentTweet);
   const isPortrait = isPortraitLayout(layout);
   const panel = isPortrait ? { x: 24, y: 42, width: 492, height: 876 } : PANEL;
-  const content = isPortrait ? { x: 52, y: 214, width: 436, height: 380 } : CONTENT;
-  const previousButton = isPortrait ? { x: 34, y: 628, width: 72, height: 72 } : PREV_BUTTON;
-  const nextButton = isPortrait ? { x: 434, y: 628, width: 72, height: 72 } : NEXT_BUTTON;
+  const content = isPortrait ? { x: 62, y: 250, width: 416, height: 382 } : CONTENT;
+  const previousButton = isPortrait ? { x: 26, y: 656, width: 72, height: 72 } : PREV_BUTTON;
+  const nextButton = isPortrait ? { x: 442, y: 656, width: 72, height: 72 } : NEXT_BUTTON;
   const quitButton = isPortrait ? { x: 58, y: 800, width: 180, height: 66 } : QUIT_BUTTON;
   const nextRoundButton = isPortrait ? { x: 276, y: 800, width: 206, height: 66 } : NEXT_ROUND_BUTTON;
 
@@ -137,51 +134,34 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         : isArcadeFallbackRound
           ? "ARCADE SCORING"
           : destructiveHits.length > 0
-            ? `DELETED TWEETS ${currentIndex + 1}/${destructiveHits.length}`
+            ? "TWEET REVIEW"
             : "NO TWEETS DELETED";
 
       if (hasTweetReview && currentHit && currentTweet) {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 82 : 74, {
-          size: isPortrait ? 15 : 18,
+        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 118 : 104, {
+          size: isPortrait ? 18 : 20,
           color: "#e79a1b",
           align: "center"
         });
-        drawPixelText(ctx, title, layout.width / 2, isPortrait ? 122 : 112, {
-          size: isPortrait ? 16 : 20,
-          color: "#fff9e8",
-          align: "center"
-        });
-        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 164 : 148, {
-          size: isPortrait ? 11 : 16,
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 174 : 148, {
+          size: isPortrait ? 13 : 17,
           color: "#70e27b",
           align: "center"
         });
-        drawPixelBeveledPanel(ctx, content, {
+        drawPixelPanel(ctx, content, {
           fill: "#101018",
           stroke: "#2a2a34",
-          lineWidth: 4,
-          bevel: 12
+          lineWidth: 4
         });
-        drawPixelText(ctx, formatDate(currentTweet.createdAt), content.x + 24, content.y + 26, {
-          size: 11,
+        drawPixelText(ctx, formatDate(currentTweet.createdAt), content.x + 24, content.y + 24, {
+          size: isPortrait ? 12 : 13,
           color: "#e79a1b"
         });
-        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 70, content.width - 48, isPortrait ? 26 : 28, isPortrait ? 8 : 6, isPortrait ? 13 : 16);
-        drawPixelText(ctx, `${currentEngagement} engagement`, content.x + 24, content.y + content.height - 58, {
-          size: 11,
-          color: "#e79a1b"
-        });
+        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 72, content.width - 48, isPortrait ? 31 : 36, isPortrait ? 7 : 5, isPortrait ? 17 : 20);
         drawPixelText(ctx, `${currentTweet.likes} likes  ${currentTweet.reposts} reposts  ${currentTweet.replies} replies`, content.x + 24, content.y + content.height - 34, {
-          size: isPortrait ? 8 : 10,
+          size: isPortrait ? 10 : 12,
           color: "#e79a1b"
         });
-        if (currentHit.deleteStatus) {
-          drawPixelText(ctx, currentHit.deleteStatus.toUpperCase(), content.x + content.width - 24, content.y + content.height - 58, {
-            size: 11,
-            color: currentHit.deleteStatus === "deleted" ? "#70e27b" : "#ff5c51",
-            align: "right"
-          });
-        }
       } else {
         drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, {
           size: isPortrait ? 19 : 28,
@@ -246,9 +226,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       }
     },
     [
-      currentEngagement,
       currentHit,
-      currentIndex,
       currentTweet,
       destructiveHits.length,
       hasTweetReview,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import crtAsset from "../../Assets/CRT/crt_edited.png";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
+import portraitBackgroundAsset from "../../Assets/Sprites/Environment/background_9x16.jpg";
 import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
@@ -435,6 +436,9 @@ function drawScoreReveals(ctx: CanvasRenderingContext2D, state: RuntimeState, ti
 function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
   if (!reveal) return;
   const panel = layout.microRevealPanel;
+  const textSize = layout.id === "portrait" ? 13 : 14;
+  const lineHeight = layout.id === "portrait" ? 25 : 28;
+  const metricsSize = layout.id === "portrait" ? 10 : 11;
 
   drawPixelBeveledPanel(ctx, panel, {
     fill: "rgba(10, 10, 14, 0.9)",
@@ -446,13 +450,13 @@ function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal
   const textX = panel.x + 24;
   const textY = panel.y + 20;
   const textWidth = panel.width - 48;
-  const lines = drawWrappedPixelText(ctx, reveal.text, textX, textY, textWidth, 23, {
-    size: 12,
+  const lines = drawWrappedPixelText(ctx, reveal.text, textX, textY, textWidth, lineHeight, {
+    size: textSize,
     color: "#fff9e8"
   });
-  const metricsY = Math.min(textY + lines * 23 + 14, panel.y + panel.height - 30);
+  const metricsY = Math.min(textY + lines * lineHeight + 16, panel.y + panel.height - 32);
   drawPixelText(ctx, `${reveal.likes} likes  ${reveal.comments} comments  ${reveal.retweets} retweets`, layout.width / 2, metricsY, {
-    size: 10,
+    size: metricsSize,
     color: "#e79a1b",
     align: "center"
   });
@@ -499,8 +503,13 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
   drawPauseButton(ctx, layout.pauseQuitButton, "QUIT");
 }
 
-function drawPortraitEnvironment(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, isClayMode: boolean) {
+function drawPortraitEnvironment(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, isClayMode: boolean, backgroundImage?: HTMLImageElement | null) {
   ctx.imageSmoothingEnabled = false;
+  if (!isClayMode && backgroundImage) {
+    ctx.drawImage(backgroundImage, 0, 0, layout.width, layout.height);
+    return;
+  }
+
   const skyTop = isClayMode ? "#13233f" : "#63c8ff";
   const skyBottom = isClayMode ? "#27456b" : "#9be5ff";
   const gradient = ctx.createLinearGradient(0, 0, 0, layout.height);
@@ -1109,6 +1118,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const clayTargetAtlasRef = useRef<CanvasImageSource | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const portraitBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
   const dogTwoBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
@@ -1340,6 +1350,19 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   }, []);
 
   useEffect(() => {
+    const portraitBackgroundImage = new Image();
+    portraitBackgroundImage.src = portraitBackgroundAsset.src;
+    portraitBackgroundImage.onload = () => {
+      portraitBackgroundImageRef.current = portraitBackgroundImage;
+    };
+
+    return () => {
+      portraitBackgroundImage.onload = null;
+      portraitBackgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const clayBackgroundImage = new Image();
     clayBackgroundImage.src = clayBackgroundAsset.src;
     clayBackgroundImage.onload = () => {
@@ -1453,9 +1476,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     if (!ctx) return;
     const isClayMode = state.mode === "C";
     const isPortrait = isPortraitLayout(state.layout);
+    const hasPortraitBackground = isPortrait && !isClayMode && Boolean(portraitBackgroundImageRef.current);
 
     if (isPortrait) {
-      drawPortraitEnvironment(ctx, state.layout, isClayMode);
+      drawPortraitEnvironment(ctx, state.layout, isClayMode, portraitBackgroundImageRef.current);
     } else if (isClayMode) {
       drawClayEnvironment(ctx, clayBackgroundImageRef.current);
     } else {
@@ -1599,7 +1623,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     if (!isClayMode && !isPortrait) {
       drawMidground(ctx, midgroundImageRef.current);
       drawForeground(ctx, foregroundImageRef.current);
-    } else if (isPortrait) {
+    } else if (isPortrait && !hasPortraitBackground) {
       drawPortraitForeground(ctx, state.layout);
     }
 
