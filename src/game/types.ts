@@ -31,7 +31,7 @@ export type HuntConfig = {
 export type TargetKind = "bird" | "clay";
 export type TargetStatus = "flying" | "hit" | "escaped";
 export type MechanicsState = "idle" | "init" | "waiting" | "flying" | "hit_pause" | "falling" | "fragmenting" | "clear";
-export type BirdColor = "blue" | "green" | "red";
+export type BirdColor = "blue" | "green" | "red" | "golden";
 
 export type TargetEntity = {
   id: string;
@@ -40,6 +40,9 @@ export type TargetEntity = {
   color: BirdColor;
   status: TargetStatus;
   mechanicsState?: MechanicsState;
+  isGolden?: boolean;
+  goldenNonce?: string;
+  expiresAtMs?: number;
   x: number;
   y: number;
   vx: number;
@@ -88,7 +91,8 @@ export type HitRecord = {
   hitOrder: number;
   hitAtMs: number;
   mode: GameMode;
-  deleteStatus?: "pending" | "deleted" | "failed";
+  deleteStatus?: "pending" | "deleted" | "failed" | "flushed";
+  isGolden?: boolean;
 };
 
 export type EscapeRecord = {
@@ -96,6 +100,28 @@ export type EscapeRecord = {
   tweet?: TweetCandidate;
   escapedAtMs: number;
   mode: GameMode;
+};
+
+export type DuckCallStatus = "disabled" | "ready" | "calling" | "summoned" | "spent";
+
+export type GoldenFlushPhase = "idle" | "starting" | "running" | "complete" | "failed";
+
+export type GoldenFlushProgress = {
+  phase: GoldenFlushPhase;
+  totalEligible: number;
+  deleted: number;
+  failed: number;
+  currentSnippet?: string;
+  error?: string;
+  startedAtMs?: number;
+  completedAtMs?: number;
+};
+
+export type GoldenFlushSummary = {
+  tweetsDeleted: number;
+  failed: number;
+  scoreFromFlush: number;
+  goldenDuckPoints: number;
 };
 
 export type RoundResult = {
@@ -110,4 +136,5 @@ export type RoundResult = {
   isLiveTweetRound: boolean;
   passLine: number;
   passed: boolean;
+  goldenFlush?: GoldenFlushSummary;
 };

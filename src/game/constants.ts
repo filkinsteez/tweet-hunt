@@ -21,6 +21,12 @@ export const DOG_HOLD_DURATION_MS = 700;
 export const DOG_LOWER_DURATION_MS = 350;
 export const BIRD_SCALE = 3;
 export const DOG_SCALE = 3;
+export const MAX_GOLDEN_DUCKS_PER_ROUND = 1;
+export const DUCK_CALL_SUMMON_DELAY_MIN_MS = 700;
+export const DUCK_CALL_SUMMON_DELAY_MAX_MS = 1400;
+export const GOLDEN_DUCK_VISIBLE_MS = 1800;
+export const GOLDEN_DUCK_SPEED_MULTIPLIER = 1.65;
+export const GOLDEN_DUCK_POINTS = 5000;
 
 export function targetsPerVolley(mode: GameMode) {
   return mode === "A" ? 1 : 2;

@@ -10,6 +10,7 @@ import portraitGrassAsset from "../../Assets/Sprites/Environment/grass_9x16.png"
 import portraitGroundAsset from "../../Assets/Sprites/Environment/ground_9x16.png";
 import portraitTreeAsset from "../../Assets/Sprites/Environment/tree_9x16.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
+import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_golden_birdsprite_fly.png";
 import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
 import clayBackgroundAsset from "../../Assets/Sprites/Clay/clay_bg.jpg";
 import clayFilledPigeonAsset from "../../Assets/Sprites/Clay/clay_filled_pigeon.jpg";
@@ -40,6 +41,11 @@ import {
   DOG_POP_DELAY_MS,
   DOG_RETRIEVE_PAUSE_MS,
   DOG_RISE_DURATION_MS,
+  DUCK_CALL_SUMMON_DELAY_MAX_MS,
+  DUCK_CALL_SUMMON_DELAY_MIN_MS,
+  GOLDEN_DUCK_POINTS,
+  GOLDEN_DUCK_SPEED_MULTIPLIER,
+  GOLDEN_DUCK_VISIBLE_MS,
   HIT_REACTION_DURATION_MS,
   ROUND_INTRO_DURATION_MS,
   RESOLVE_DELAY_MS,
@@ -101,7 +107,18 @@ import {
 import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
 import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, drawWrappedPixelText, pointInRect, wrapPixelText, type Rect } from "@/game/uiDraw";
-import type { BirdColor, GameMode, HitRecord, RoundResult, TargetEntity, TweetCandidate } from "@/game/types";
+import type {
+  BirdColor,
+  DuckCallStatus,
+  GameMode,
+  GoldenFlushProgress,
+  GoldenFlushSummary,
+  HitRecord,
+  RoundResult,
+  TargetEntity,
+  TweetCandidate
+} from "@/game/types";
+import { streamGoldenFlush } from "@/lib/goldenFlushClient";
 
 type RuntimePhase = "boot" | "intro" | "active" | "resolve" | "ended";
 
@@ -144,6 +161,13 @@ type RuntimeState = {
     points: number;
     expiresAtMs: number;
   }>;
+  duckCallStatus: DuckCallStatus;
+  duckCallTriggeredAtMs?: number;
+  goldenSpawnAtMs?: number;
+  goldenTargetId?: string;
+  goldenFlushProgress: GoldenFlushProgress;
+  goldenSummary?: GoldenFlushSummary;
+  flockClearedFlashStartedAtMs?: number;
   ended: boolean;
 };
 
@@ -206,7 +230,7 @@ type UiImageKey =
 const FOREGROUND_GRASS_TOP_Y = 520;
 const FALLING_DUCK_HALF_HEIGHT = 58;
 const PORTRAIT_DOG_POP_DOWN_Y = 0;
-const PORTRAIT_DOG_LAUGH_UP_Y = 18;
+const PORTRAIT_DOG_LAUGH_UP_Y = 13;
 const BIRD_LAUNCH_Y_MIN = FOREGROUND_GRASS_TOP_Y - 28;
 const BIRD_LAUNCH_Y_MAX = FOREGROUND_GRASS_TOP_Y - 14;
 const BIRD_FLIGHT_FLOOR_Y = FOREGROUND_GRASS_TOP_Y - 10;
@@ -231,6 +255,192 @@ function duckGroundSoundY(layout: GameplayLayoutProfile) {
 
 function uiScaleForLayout(layout: GameplayLayoutProfile) {
   return isPortraitLayout(layout) ? PORTRAIT_UI_SCALE : UI_SCALE;
+}
+
+function generateGoldenFlushNonce() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `gf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function drawDuckCallButton(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, status: DuckCallStatus) {
+  if (status === "disabled") return;
+  if (!isPortraitLayout(layout)) return;
+  const rect = layout.duckCallButton;
+  const portrait = isPortraitLayout(layout);
+  const isReady = status === "ready";
+  const isCalling = status === "calling";
+  const isSummoned = status === "summoned";
+  const isSpent = status === "spent";
+
+  const fill = isReady ? "#1a1207" : isCalling ? "#3b2705" : isSummoned ? "#6d4a07" : "#161019";
+  const stroke = isReady ? "#f5c542" : isCalling ? "#f7b733" : isSummoned ? "#ffe066" : "#7a6f56";
+
+  drawPixelBeveledPanel(ctx, rect, {
+    fill,
+    stroke,
+    lineWidth: 4,
+    bevel: 8
+  });
+
+  const labelTop = isReady ? "DUCK" : isCalling ? "DUCK" : isSummoned ? "GOLDEN" : "USED";
+  const labelBottom = isReady ? "CALL" : isCalling ? "CALL..." : isSummoned ? "DUCK!" : "TODAY";
+
+  const titleSize = portrait ? 16 : 13;
+  const subtitleSize = portrait ? 14 : 11;
+  const baseY = rect.y + rect.height / 2 - (portrait ? 8 : 6);
+
+  drawPixelText(ctx, labelTop, rect.x + rect.width / 2, baseY, {
+    size: titleSize,
+    color: stroke,
+    align: "center",
+    baseline: "middle"
+  });
+  drawPixelText(ctx, labelBottom, rect.x + rect.width / 2, baseY + (portrait ? 22 : 16), {
+    size: subtitleSize,
+    color: isReady ? "#fff9e8" : "#fff9e8",
+    align: "center",
+    baseline: "middle"
+  });
+
+  if (!portrait) {
+    const hintY = rect.y + rect.height + 14;
+    drawPixelText(ctx, isReady ? "PRESS D" : "", rect.x + rect.width / 2, hintY, {
+      size: 9,
+      color: "#9c8b6c",
+      align: "center"
+    });
+  }
+}
+
+function drawFlockClearedFlash(ctx: CanvasRenderingContext2D, state: RuntimeState, timeMs: number) {
+  if (state.flockClearedFlashStartedAtMs === undefined) return;
+  const ageMs = timeMs - state.flockClearedFlashStartedAtMs;
+  const FLASH_DURATION_MS = 1600;
+  if (ageMs > FLASH_DURATION_MS) return;
+  const progress = ageMs / FLASH_DURATION_MS;
+  const alpha = progress < 0.18 ? progress / 0.18 : 1 - (progress - 0.18) / 0.82;
+  const portrait = isPortraitLayout(state.layout);
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.fillStyle = "rgba(245, 197, 66, 0.16)";
+  ctx.fillRect(0, 0, state.layout.width, state.layout.height);
+  drawPixelText(
+    ctx,
+    "FLOCK CLEARED",
+    state.layout.width / 2,
+    state.layout.height / 2 - (portrait ? 12 : 8),
+    {
+      size: portrait ? 36 : 44,
+      color: "#fff3c4",
+      align: "center",
+      baseline: "middle"
+    }
+  );
+  if (state.goldenSummary) {
+    drawPixelText(
+      ctx,
+      `${state.goldenSummary.tweetsDeleted} TWEETS DELETED`,
+      state.layout.width / 2,
+      state.layout.height / 2 + (portrait ? 32 : 36),
+      {
+        size: portrait ? 18 : 20,
+        color: "#f5c542",
+        align: "center",
+        baseline: "middle"
+      }
+    );
+  }
+  ctx.restore();
+}
+
+const GOLDEN_FLUSH_HUD_HOLD_MS = 1800;
+const GOLDEN_FLUSH_HUD_FADE_MS = 600;
+
+function drawGoldenFlushHud(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, progress: GoldenFlushProgress, timeMs: number) {
+  if (progress.phase === "idle") return;
+  let alpha = 1;
+  if ((progress.phase === "complete" || progress.phase === "failed") && progress.completedAtMs !== undefined) {
+    const ageMs = timeMs - progress.completedAtMs;
+    if (ageMs >= GOLDEN_FLUSH_HUD_HOLD_MS + GOLDEN_FLUSH_HUD_FADE_MS) return;
+    if (ageMs > GOLDEN_FLUSH_HUD_HOLD_MS) {
+      alpha = 1 - (ageMs - GOLDEN_FLUSH_HUD_HOLD_MS) / GOLDEN_FLUSH_HUD_FADE_MS;
+    }
+  }
+  const rect = layout.goldenFlushPanel;
+  const portrait = isPortraitLayout(layout);
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+  drawPixelBeveledPanel(ctx, rect, {
+    fill: "rgba(15, 9, 2, 0.92)",
+    stroke: "#f5c542",
+    lineWidth: 4,
+    bevel: 12
+  });
+
+  const titleSize = portrait ? 20 : 22;
+  const detailSize = portrait ? 14 : 14;
+  const titleY = rect.y + (portrait ? 22 : 24);
+  drawPixelText(ctx, "GOLDEN FLUSH", rect.x + rect.width / 2, titleY, {
+    size: titleSize,
+    color: "#f5c542",
+    align: "center"
+  });
+
+  const total = Math.max(progress.totalEligible, 1);
+  const deleted = progress.deleted;
+  const failed = progress.failed;
+
+  const barX = rect.x + 24;
+  const barY = rect.y + (portrait ? 56 : 60);
+  const barW = rect.width - 48;
+  const barH = portrait ? 16 : 14;
+  ctx.fillStyle = "#241704";
+  ctx.fillRect(barX, barY, barW, barH);
+  const ratio = Math.min(1, deleted / total);
+  ctx.fillStyle = "#f5c542";
+  ctx.fillRect(barX, barY, Math.round(barW * ratio), barH);
+  ctx.strokeStyle = "#fff3c4";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+  const statusText =
+    progress.phase === "starting"
+      ? "ARMING FLUSH..."
+      : progress.phase === "running"
+        ? `DELETING ${deleted}/${progress.totalEligible}${failed > 0 ? `  FAILED ${failed}` : ""}`
+        : progress.phase === "complete"
+          ? `FLOCK CLEARED: ${deleted}${failed > 0 ? `  (${failed} failed)` : ""}`
+          : `ERROR: ${(progress.error ?? "Golden flush stopped").slice(0, 40)}`;
+
+  drawPixelText(ctx, statusText, rect.x + rect.width / 2, barY + barH + (portrait ? 26 : 22), {
+    size: detailSize,
+    color: progress.phase === "failed" ? "#ff7676" : "#fff9e8",
+    align: "center"
+  });
+
+  if (progress.phase === "running") {
+    const pulse = 0.6 + 0.4 * Math.sin(timeMs / 160);
+    ctx.save();
+    ctx.globalAlpha = pulse * alpha;
+    drawPixelText(ctx, "QUACK!", rect.x + rect.width / 2, rect.y + rect.height - 16, {
+      size: portrait ? 14 : 12,
+      color: "#f5c542",
+      align: "center",
+      baseline: "alphabetic"
+    });
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawScaledImage(ctx: CanvasRenderingContext2D, image: CanvasImageSource, x: number, y: number, width: number, height: number) {
+  ctx.drawImage(image, Math.round(x), Math.round(y), Math.round(width), Math.round(height));
 }
 
 function roundUiX(roundNumber: number, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
@@ -275,8 +485,115 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     dogBarkWindowStarted: false,
     dogBarkCounterFrames: DOG_BARK_INITIAL_FRAMES,
     scoreReveals: [],
+    duckCallStatus: mode === "C" || !isLiveTweetRound ? "disabled" : "ready",
+    duckCallTriggeredAtMs: undefined,
+    goldenSpawnAtMs: undefined,
+    goldenTargetId: undefined,
+    goldenFlushProgress: { phase: "idle", totalEligible: 0, deleted: 0, failed: 0 },
+    goldenSummary: undefined,
+    flockClearedFlashStartedAtMs: undefined,
     ended: false
   };
+}
+
+function getRemainingArmedTweetIds(state: RuntimeState, tweets: TweetCandidate[]): string[] {
+  if (state.mode === "C" || !state.isLiveTweetRound) return [];
+  const consumedIds = new Set<string>();
+  for (const hit of state.hits) {
+    if (hit.tweet) consumedIds.add(hit.tweet.id);
+  }
+  for (const escape of state.escapes) {
+    if (escape.tweet) consumedIds.add(escape.tweet.id);
+  }
+  for (const target of state.targets) {
+    if (target.tweet) consumedIds.add(target.tweet.id);
+  }
+  for (let index = 0; index < state.nextTweetIndex; index += 1) {
+    const tweet = tweets[index];
+    if (tweet) consumedIds.add(tweet.id);
+  }
+  const remaining: string[] = [];
+  for (const tweet of tweets) {
+    if (!consumedIds.has(tweet.id)) remaining.push(tweet.id);
+  }
+  return remaining;
+}
+
+function canUseDuckCall(state: RuntimeState | null): boolean {
+  if (!state) return false;
+  if (state.phase !== "active") return false;
+  if (state.duckCallStatus !== "ready") return false;
+  if (state.mode === "C") return false;
+  if (!state.isLiveTweetRound) return false;
+  return true;
+}
+
+function triggerDuckCall(state: RuntimeState, now: number) {
+  state.duckCallStatus = "calling";
+  state.duckCallTriggeredAtMs = now;
+  const jitter = DUCK_CALL_SUMMON_DELAY_MIN_MS + Math.random() * (DUCK_CALL_SUMMON_DELAY_MAX_MS - DUCK_CALL_SUMMON_DELAY_MIN_MS);
+  state.goldenSpawnAtMs = now + jitter;
+  gameAudio.play("duckQuack", 0.9);
+}
+
+function spawnGoldenDuck(state: RuntimeState, now: number) {
+  const { layout } = state;
+  const portrait = isPortraitLayout(layout);
+  const direction: 1 | -1 = (rngNext(state.rng) & 1) === 0 ? 1 : -1;
+  const startX = direction === 1 ? layout.tuning.birdHorizontalPadding : layout.width - layout.tuning.birdHorizontalPadding;
+  const baseY = portrait ? layout.tuning.birdFlightTopY + 36 : 200;
+  const speedJitter = rngNext(state.rng) % layout.tuning.birdSpeedJitter;
+  const vx = direction * (layout.tuning.birdBaseVx + speedJitter) * GOLDEN_DUCK_SPEED_MULTIPLIER;
+  const vy = portrait ? layout.tuning.birdBaseVy * 0.4 : -120;
+
+  const target: TargetEntity = {
+    id: `golden_${state.roundNumber}_${now}`,
+    kind: "bird",
+    tweet: undefined,
+    color: "golden",
+    status: "flying",
+    mechanicsState: "flying",
+    x: startX,
+    y: baseY,
+    vx,
+    vy,
+    nesX: canvasToNesXForLayout(startX, layout),
+    nesY: canvasToNesYForLayout(baseY, layout),
+    radius: portrait ? layout.tuning.touchHitRadius * 1.1 : layout.tuning.touchHitRadius,
+    createdAtMs: now,
+    points: GOLDEN_DUCK_POINTS,
+    direction,
+    flight: portrait ? "diag" : "side",
+    slotIndex: 0,
+    shootable: true,
+    isGolden: true,
+    expiresAtMs: now + GOLDEN_DUCK_VISIBLE_MS,
+    motionCode: direction === 1 ? 3 : 13,
+    speedIndex: 0,
+    flyAwayFlag: false,
+    flyAwayTimer: Math.ceil(GOLDEN_DUCK_VISIBLE_MS / FIXED_STEP_MS),
+    launchFlag: false,
+    pingPongEdges: true,
+    fliesBehindTree: false
+  };
+
+  state.targets = [...state.targets, target];
+  state.goldenTargetId = target.id;
+  state.duckCallStatus = "summoned";
+  gameAudio.play("duckQuack", 0.85);
+}
+
+function clearGoldenIfExpired(state: RuntimeState, now: number) {
+  if (!state.goldenTargetId) return;
+  const target = state.targets.find((candidate) => candidate.id === state.goldenTargetId);
+  if (!target) return;
+  if (target.status !== "flying") return;
+  if (target.expiresAtMs !== undefined && now >= target.expiresAtMs) {
+    target.status = "escaped";
+    target.mechanicsState = "clear";
+    state.goldenTargetId = undefined;
+    if (state.duckCallStatus === "summoned") state.duckCallStatus = "ready";
+  }
 }
 
 function randomBetween(min: number, max: number) {
@@ -329,12 +646,12 @@ function createTransparentCanvas(
 }
 
 function drawUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, scale: number) {
-  ctx.drawImage(image, x, y, image.naturalWidth * scale, image.naturalHeight * scale);
+  drawScaledImage(ctx, image, x, y, image.naturalWidth * scale, image.naturalHeight * scale);
 }
 
 function drawRoundUiImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, roundNumber: number, x: number, y: number, scale: number) {
   const sourceWidth = roundNumber < 10 ? 24 : image.naturalWidth;
-  ctx.drawImage(image, 0, 0, sourceWidth, image.naturalHeight, x, y, sourceWidth * scale, image.naturalHeight * scale);
+  ctx.drawImage(image, 0, 0, sourceWidth, image.naturalHeight, Math.round(x), Math.round(y), Math.round(sourceWidth * scale), Math.round(image.naturalHeight * scale));
 }
 
 function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, digit: number, x: number, y: number, scale: number) {
@@ -342,7 +659,7 @@ function drawScoreDigit(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, 
   const glyphHeight = 8;
   const sourceX = (digit % 5) * glyphWidth;
   const sourceY = digit >= 5 ? glyphHeight : 0;
-  ctx.drawImage(atlas, sourceX, sourceY, glyphWidth, glyphHeight, x, y, glyphWidth * scale, glyphHeight * scale);
+  ctx.drawImage(atlas, sourceX, sourceY, glyphWidth, glyphHeight, Math.round(x), Math.round(y), Math.round(glyphWidth * scale), Math.round(glyphHeight * scale));
 }
 
 function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, score: number, layout: GameplayLayoutProfile) {
@@ -350,11 +667,11 @@ function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement,
   const scale = uiScaleForLayout(layout);
   const digits = Math.max(0, score).toString().padStart(6, "0").slice(-6);
   const glyphWidth = 8 * scale;
-  const x = hud.score.x + 4 * scale - 4;
-  const y = hud.score.y + scale + 8;
+  const x = isPortraitLayout(layout) ? hud.score.x + 13 : hud.score.x + 4 * scale - 4;
+  const y = isPortraitLayout(layout) ? hud.score.y + 7 : hud.score.y + scale + 8;
 
   ctx.fillStyle = "#050508";
-  ctx.fillRect(x, y, glyphWidth * 6, 8 * scale);
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(glyphWidth * 6), Math.round(8 * scale));
   for (let index = 0; index < digits.length; index += 1) {
     drawScoreDigit(ctx, atlas, Number(digits[index]), x + index * glyphWidth, y, scale);
   }
@@ -386,10 +703,10 @@ function drawHitDucks(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement, hi
       0,
       duckWidth,
       duckHeight,
-      hud.hit.x + (35 + index * 8) * scale,
-      y,
-      duckWidth * scale,
-      duckHeight * scale
+      Math.round(hud.hit.x + (35 + index * 8) * scale),
+      Math.round(y),
+      Math.round(duckWidth * scale),
+      Math.round(duckHeight * scale)
     );
   }
 }
@@ -399,7 +716,12 @@ function maskSpentShots(ctx: CanvasRenderingContext2D, shotsRemaining: number, l
   const scale = uiScaleForLayout(layout);
   ctx.fillStyle = "#050508";
   for (let index = shotsRemaining; index < SHOTS_PER_VOLLEY; index += 1) {
-    ctx.fillRect(hud.shots.x + (4 + index * 8) * scale, hud.shots.y + 3 * scale, 5 * scale, 9 * scale);
+    ctx.fillRect(
+      Math.round(hud.shots.x + (4 + index * 8) * scale),
+      Math.round(hud.shots.y + 3 * scale),
+      Math.round(5 * scale),
+      Math.round(9 * scale)
+    );
   }
 }
 
@@ -411,7 +733,7 @@ function drawSpriteHud(
 ) {
   const isClayMode = state.mode === "C";
   const layout = state.layout;
-  const hud = layout.hud;
+  const hud = { ...layout.hud };
   const scale = uiScaleForLayout(layout);
   const shots = isClayMode ? images.clayShots ?? images.shots : images.shots;
   const hit = isClayMode ? images.clayHit ?? images.hit : images.hit;
@@ -428,14 +750,24 @@ function drawSpriteHud(
     return;
   }
 
+  if (isPortraitLayout(layout)) {
+    const groupLeft = Math.min(hud.shots.x, hud.hit.x);
+    const groupRight = Math.max(hud.shots.x + shots.naturalWidth * scale, hud.hit.x + hit.naturalWidth * scale);
+    const centeredLeft = (layout.width - (groupRight - groupLeft)) / 2;
+    const offsetX = Math.round(centeredLeft - groupLeft);
+    hud.shots = { ...hud.shots, x: hud.shots.x + offsetX };
+    hud.hit = { ...hud.hit, x: hud.hit.x + offsetX };
+  }
+  const bottomHudLayout = { ...layout, hud };
+
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber, layout), hud.round.y, scale);
+  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber, layout), layout.hud.round.y, scale);
   drawUiImage(ctx, shots, hud.shots.x, hud.shots.y, scale);
   drawUiImage(ctx, hit, hud.hit.x, hud.hit.y, scale);
-  drawUiImage(ctx, score, hud.score.x, hud.score.y, scale);
+  drawUiImage(ctx, score, layout.hud.score.x, layout.hud.score.y, scale);
   drawRoundNumber(ctx, roundAtlas, state.roundNumber, layout);
-  maskSpentShots(ctx, state.shotsRemaining, layout);
+  maskSpentShots(ctx, state.shotsRemaining, bottomHudLayout);
   if (isClayMode && clayHitCounterFilled && state.hits.length > 0) {
     drawClayHitCounterFilledOverlay(ctx, clayHitCounterFilled, state.hits.length, hud.hit, scale);
   } else if (isClayMode && clayHitFilled) {
@@ -445,7 +777,7 @@ function drawSpriteHud(
       sourceRect: CLAY_HIT_HUD_ATLAS_FRAME
     });
   } else if (hitAtlas) {
-    drawHitDucks(ctx, hitAtlas, state.hits.length, layout);
+    drawHitDucks(ctx, hitAtlas, state.hits.length, bottomHudLayout);
   }
   drawScoreNumber(ctx, scoreAtlas, state.score, layout);
   ctx.restore();
@@ -529,7 +861,8 @@ function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal
     const desiredLines = Math.min(wrapPixelText(ctx, reveal.text, maxWidth, textSize).length, 3);
     const desiredHeight = topInset + desiredLines * lineHeight + metricsGap + metricsSize + bottomInset;
     const height = Math.min(panel.height, Math.max(118, desiredHeight));
-    panel = { ...panel, height };
+    const bottomY = layout.height - 20;
+    panel = { ...panel, y: bottomY - height, height };
   } else {
     const maxWidth = panel.width - textInsetX * 2;
     const desiredLines = Math.min(wrapPixelText(ctx, reveal.text, maxWidth, textSize).length, 2);
@@ -598,7 +931,7 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
     align: "center"
   });
   drawPixelText(ctx, isPortraitLayout(layout) ? "Tap Resume to continue." : "Press Escape to resume.", layout.width / 2, layout.pausePanel.y + 124, {
-    size: 12,
+    size: isPortraitLayout(layout) ? 16 : 12,
     color: "#b9ad9a",
     align: "center"
   });
@@ -877,6 +1210,11 @@ function markEscaped(state: RuntimeState, target: TargetEntity, now: number) {
   target.status = "escaped";
   target.mechanicsState = "clear";
   target.escapedAtMs = now;
+  if (target.isGolden) {
+    if (state.goldenTargetId === target.id) state.goldenTargetId = undefined;
+    if (state.duckCallStatus === "summoned") state.duckCallStatus = "ready";
+    return;
+  }
   state.escapes.push({
     targetId: target.id,
     tweet: target.tweet,
@@ -890,9 +1228,10 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
   gameAudio.stopLoop("clayPigeonFlying");
   state.ended = true;
   state.phase = "ended";
+  const nonGoldenHits = state.hits.filter((hit) => !hit.isGolden).length;
   const passLine = state.isLiveTweetRound ? Math.min(passLineForRound(state.roundNumber), state.targetLimit) : passLineForRound(state.roundNumber);
-  const passed = state.hits.length >= passLine;
-  const isPerfectArcadeRound = !state.isLiveTweetRound && state.hits.length === state.targetLimit;
+  const passed = nonGoldenHits >= passLine;
+  const isPerfectArcadeRound = !state.isLiveTweetRound && nonGoldenHits === state.targetLimit;
   if (isPerfectArcadeRound) {
     state.score += perfectBonusForRound(state.roundNumber);
     gameAudio.play("perfectRound", 0.82);
@@ -910,13 +1249,26 @@ function finishRound(state: RuntimeState, onRoundEnd: Props["onRoundEnd"]) {
     targetLimit: state.targetLimit,
     isLiveTweetRound: state.isLiveTweetRound,
     passLine,
-    passed
+    passed,
+    goldenFlush: state.goldenSummary
   });
 }
 
 function advanceFixedStep(state: RuntimeState, now: number) {
   if (state.phase !== "active" && state.phase !== "resolve" && state.phase !== "intro") return;
   state.fixedFrameCounter += 1;
+
+  if (
+    state.duckCallStatus === "calling" &&
+    state.goldenSpawnAtMs !== undefined &&
+    now >= state.goldenSpawnAtMs &&
+    state.phase === "active"
+  ) {
+    spawnGoldenDuck(state, now);
+    state.goldenSpawnAtMs = undefined;
+  }
+
+  clearGoldenIfExpired(state, now);
 
   if (state.phase === "intro" && state.mode !== "C") {
     const introElapsedMs = now - state.phaseStartedAtMs;
@@ -992,7 +1344,7 @@ function advanceFixedStep(state: RuntimeState, now: number) {
     }
   }
 
-  if (state.phase === "active" && !state.targets.some(isTargetUnresolved)) {
+  if (state.phase === "active" && !state.targets.some((target) => !target.isGolden && isTargetUnresolved(target))) {
     state.phase = "resolve";
     state.phaseStartedAtMs = now;
   }
@@ -1026,7 +1378,54 @@ function nextLaunchGapForLayout(state: RuntimeState) {
   return state.mode === "B" ? (rngNext(state.rng) & 0x0f) + 8 : (rngNext(state.rng) & 0x1f) + 12;
 }
 
+function updateGoldenDuck(state: RuntimeState, target: TargetEntity) {
+  const { layout } = state;
+  const dt = FIXED_STEP_MS / 1000;
+  const portrait = isPortraitLayout(layout);
+
+  target.x += target.vx * dt;
+  target.y += target.vy * dt;
+
+  const left = layout.playBounds.x + layout.tuning.birdHorizontalPadding;
+  const right = layout.playBounds.x + layout.playBounds.width - layout.tuning.birdHorizontalPadding;
+  const topBound = portrait ? layout.tuning.birdFlightTopY : 96;
+  const bottomBound = portrait ? layout.tuning.birdFlightBottomY - 80 : 360;
+
+  if (target.x <= left) {
+    target.x = left;
+    target.vx = Math.abs(target.vx);
+  } else if (target.x >= right) {
+    target.x = right;
+    target.vx = -Math.abs(target.vx);
+  }
+
+  if (target.y <= topBound) {
+    target.y = topBound;
+    target.vy = Math.abs(target.vy) * 0.7;
+  } else if (target.y >= bottomBound) {
+    target.y = bottomBound;
+    target.vy = -Math.abs(target.vy) * 0.7;
+  }
+
+  target.vy += 60 * dt; // gentle bob
+  target.direction = target.vx >= 0 ? 1 : -1;
+  target.flight = Math.abs(target.vy) > 90 ? "diag" : "side";
+  target.nesX = canvasToNesXForLayout(target.x, layout);
+  target.nesY = canvasToNesYForLayout(target.y, layout);
+
+  if (target.expiresAtMs !== undefined && performance.now() >= target.expiresAtMs) {
+    target.status = "escaped";
+    target.mechanicsState = "clear";
+    if (state.goldenTargetId === target.id) state.goldenTargetId = undefined;
+    if (state.duckCallStatus === "summoned") state.duckCallStatus = "ready";
+  }
+}
+
 function updateGameADuck(state: RuntimeState, target: TargetEntity) {
+  if (target.isGolden) {
+    updateGoldenDuck(state, target);
+    return;
+  }
   if (isPortraitLayout(state.layout)) {
     updatePortraitDuck(state, target);
     return;
@@ -1062,6 +1461,10 @@ function updateGameADuck(state: RuntimeState, target: TargetEntity) {
 }
 
 function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
+  if (target.isGolden) {
+    updateGoldenDuck(state, target);
+    return;
+  }
   if (isPortraitLayout(state.layout)) {
     updatePortraitDuck(state, target);
     return;
@@ -1250,6 +1653,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const crtRendererRef = useRef<CrtRenderer | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const flyFramesRef = useRef<FlyFrameImages | null>(null);
+  const goldenFlyFramesRef = useRef<FlyFrameImages | null>(null);
   const birdShotImageRef = useRef<HTMLImageElement | null>(null);
   const clayTargetAtlasRef = useRef<CanvasImageSource | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
@@ -1392,11 +1796,20 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      const state = stateRef.current;
-      if (!state || state.phase === "ended") return;
-      event.preventDefault();
-      setPausedState(!pausedRef.current);
+      if (event.key === "Escape") {
+        const state = stateRef.current;
+        if (!state || state.phase === "ended") return;
+        event.preventDefault();
+        setPausedState(!pausedRef.current);
+        return;
+      }
+      if (event.key === "d" || event.key === "D") {
+        const state = stateRef.current;
+        if (!state || pausedRef.current) return;
+        if (!canUseDuckCall(state)) return;
+        event.preventDefault();
+        triggerDuckCall(state, performance.now());
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -1422,6 +1835,19 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     return () => {
       image.onload = null;
       flyFramesRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      goldenFlyFramesRef.current = { image, columns: 4, rows: 3 };
+    };
+    image.src = chatGptGoldenBirdFlyAsset.src;
+
+    return () => {
+      image.onload = null;
+      goldenFlyFramesRef.current = null;
     };
   }, []);
 
@@ -1762,7 +2188,8 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     if (!isClayMode && !isPortrait) {
       for (const target of state.targets) {
         if (target.status !== "escaped" && target.fliesBehindTree) {
-          drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current);
+          const frames = target.isGolden ? goldenFlyFramesRef.current : flyFramesRef.current;
+          drawTarget(ctx, image, target, timeMs, frames, birdShotImageRef.current);
         }
       }
 
@@ -1771,7 +2198,8 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
 
     for (const target of state.targets) {
       if (target.status !== "escaped" && (isClayMode || !target.fliesBehindTree)) {
-        drawTarget(ctx, image, target, timeMs, flyFramesRef.current, birdShotImageRef.current, clayTargetAtlasRef.current);
+        const frames = target.isGolden ? goldenFlyFramesRef.current : flyFramesRef.current;
+        drawTarget(ctx, image, target, timeMs, frames, birdShotImageRef.current, clayTargetAtlasRef.current);
       }
     }
 
@@ -1831,6 +2259,9 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     drawScoreReveals(ctx, state, timeMs);
     drawSpriteHud(ctx, state, uiImagesRef.current, clayTargetAtlasRef.current);
     drawMicroRevealPanel(ctx, microRevealRef.current, state.layout);
+    drawDuckCallButton(ctx, state.layout, state.duckCallStatus);
+    drawGoldenFlushHud(ctx, state.layout, state.goldenFlushProgress, timeMs);
+    drawFlockClearedFlash(ctx, state, timeMs);
     if (pausedRef.current) {
       drawPauseOverlay(ctx, state.layout);
     }
@@ -1885,6 +2316,116 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     mouseRef.current = resolveCanvasPositionFromClient(event.currentTarget, event.clientX, event.clientY);
   }
 
+  async function startGoldenFlushFromGoldenHit(state: RuntimeState, golden: TargetEntity) {
+    const remainingIds = getRemainingArmedTweetIds(state, tweetsRef.current);
+    const goldenPoints = golden.points;
+    const flushPointsPerDelete = 200;
+
+    state.goldenSummary = {
+      tweetsDeleted: 0,
+      failed: 0,
+      scoreFromFlush: 0,
+      goldenDuckPoints: goldenPoints
+    };
+
+    if (state.mode === "C" || remainingIds.length === 0) {
+      state.goldenFlushProgress = {
+        phase: "complete",
+        totalEligible: 0,
+        deleted: 0,
+        failed: 0,
+        startedAtMs: performance.now(),
+        completedAtMs: performance.now()
+      };
+      state.flockClearedFlashStartedAtMs = performance.now();
+      return;
+    }
+
+    const flushIds = remainingIds.slice(0, 100);
+    state.goldenFlushProgress = {
+      phase: "starting",
+      totalEligible: flushIds.length,
+      deleted: 0,
+      failed: 0,
+      startedAtMs: performance.now()
+    };
+
+    const finalize = (phase: "complete" | "failed", error?: string) => {
+      state.goldenFlushProgress = {
+        ...state.goldenFlushProgress,
+        phase,
+        error,
+        completedAtMs: performance.now()
+      };
+      if (phase === "complete") state.flockClearedFlashStartedAtMs = performance.now();
+    };
+
+    if (debugModeRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const deleted = flushIds.length;
+      const scoreFromFlush = deleted * flushPointsPerDelete;
+      state.score += scoreFromFlush;
+      state.goldenFlushProgress = {
+        ...state.goldenFlushProgress,
+        phase: "running",
+        deleted,
+        failed: 0
+      };
+      state.goldenSummary = {
+        tweetsDeleted: deleted,
+        failed: 0,
+        scoreFromFlush,
+        goldenDuckPoints: goldenPoints
+      };
+      finalize("complete");
+      return;
+    }
+
+    const nonce = generateGoldenFlushNonce();
+    try {
+      for await (const event of streamGoldenFlush({ mode: state.mode, nonce, tweetIds: flushIds })) {
+        if (event.event === "start") {
+          state.goldenFlushProgress = {
+            ...state.goldenFlushProgress,
+            phase: "running",
+            totalEligible: event.total
+          };
+        } else if (event.event === "progress") {
+          if (event.ok) {
+            state.score += flushPointsPerDelete;
+            state.goldenSummary = {
+              ...state.goldenSummary!,
+              tweetsDeleted: event.deleted,
+              scoreFromFlush: state.goldenSummary!.scoreFromFlush + flushPointsPerDelete
+            };
+          } else {
+            state.goldenSummary = {
+              ...state.goldenSummary!,
+              failed: event.failed
+            };
+          }
+          state.goldenFlushProgress = {
+            ...state.goldenFlushProgress,
+            phase: "running",
+            deleted: event.deleted,
+            failed: event.failed
+          };
+        } else if (event.event === "complete") {
+          state.goldenSummary = {
+            ...state.goldenSummary!,
+            tweetsDeleted: event.deleted,
+            failed: event.failed
+          };
+          finalize("complete");
+        } else if (event.event === "error") {
+          finalize("failed", event.message);
+        }
+      }
+    } catch (error) {
+      finalize("failed", error instanceof Error ? error.message : "Golden flush failed");
+    }
+  }
+
   function handleShot(point: { x: number; y: number }) {
     if (pausedRef.current) return;
     const state = stateRef.current;
@@ -1909,7 +2450,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     hit.hitAtMs = now;
     hit.vx = hit.direction * 55;
     hit.vy = 260;
-    state.lastVolleyHitCount += 1;
+    if (!hit.isGolden) state.lastVolleyHitCount += 1;
     if (hit.kind === "clay") gameAudio.play("clayPigeonHit", 0.78);
 
     const record: HitRecord = {
@@ -1919,9 +2460,26 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       hitOrder: state.hits.length + 1,
       hitAtMs: now,
       mode: state.mode,
-      deleteStatus: hit.tweet && state.mode !== "C" ? "pending" : undefined
+      deleteStatus: hit.tweet && state.mode !== "C" ? "pending" : undefined,
+      isGolden: hit.isGolden
     };
     state.hits.push(record);
+
+    if (hit.isGolden) {
+      state.score += hit.points;
+      state.scoreReveals.push({
+        id: `${hit.id}_${now}`,
+        x: hit.x,
+        y: hit.y,
+        points: hit.points,
+        expiresAtMs: now + 1200
+      });
+      if (state.goldenTargetId === hit.id) state.goldenTargetId = undefined;
+      state.duckCallStatus = "ready";
+      gameAudio.play("perfectRound", 0.65);
+      void startGoldenFlushFromGoldenHit(state, hit);
+      return;
+    }
 
     if (hit.tweet) {
       if (debugModeRef.current) {
@@ -1958,6 +2516,17 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       } else if (pointInRect(point, activeLayout.pauseQuitButton)) {
         handleQuit();
       }
+      return;
+    }
+
+    const state = stateRef.current;
+    if (
+      state &&
+      isPortraitLayout(state.layout) &&
+      canUseDuckCall(state) &&
+      pointInRect(point, state.layout.duckCallButton)
+    ) {
+      triggerDuckCall(state, performance.now());
       return;
     }
 

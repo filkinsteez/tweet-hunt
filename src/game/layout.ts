@@ -20,6 +20,8 @@ export type GameplayLayoutProfile = {
   pausePanel: Rect;
   pauseQuitButton: Rect;
   pauseResumeButton: Rect;
+  duckCallButton: Rect;
+  goldenFlushPanel: Rect;
   dogRetrieveTriggerY: number;
   dogSafeX: { min: number; max: number };
   tuning: {
@@ -58,6 +60,8 @@ export const LANDSCAPE_LAYOUT: GameplayLayoutProfile = {
   pausePanel: { x: 236, y: 178, width: 488, height: 332 },
   pauseQuitButton: { x: 292, y: 402, width: 168, height: 56 },
   pauseResumeButton: { x: 500, y: 402, width: 168, height: 56 },
+  duckCallButton: { x: 460, y: CANVAS_HEIGHT - 92, width: 140, height: 58 },
+  goldenFlushPanel: { x: 72, y: 180, width: 816, height: 132 },
   dogRetrieveTriggerY: DOG_RETRIEVE_TRIGGER_Y,
   dogSafeX: { min: 90, max: CANVAS_WIDTH - 90 },
   tuning: {
@@ -96,6 +100,8 @@ export const PORTRAIT_LAYOUT: GameplayLayoutProfile = {
   pausePanel: { x: 46, y: 278, width: 448, height: 330 },
   pauseQuitButton: { x: 86, y: 504, width: 154, height: 58 },
   pauseResumeButton: { x: 290, y: 504, width: 164, height: 58 },
+  duckCallButton: { x: 412, y: 718, width: 116, height: 88 },
+  goldenFlushPanel: { x: 18, y: 188, width: 504, height: 230 },
   dogRetrieveTriggerY: 710,
   dogSafeX: { min: 72, max: 468 },
   tuning: {

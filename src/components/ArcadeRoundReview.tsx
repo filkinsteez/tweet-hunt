@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useRef, type CSSProperties } from "react";
+import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
+import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_golden_birdsprite_fly.png";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { truncate } from "@/game/format";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
@@ -14,19 +16,20 @@ type Props = {
   onNextRound: () => void;
 };
 
-const EMPTY_IMAGES = {};
-const PANEL: Rect = { x: 56, y: 42, width: 848, height: 636 };
-const CONTENT: Rect = { x: 128, y: 196, width: 704, height: 300 };
-const SUMMARY_STATS_PANEL: Rect = { x: 150, y: 284, width: 660, height: 162 };
-const PREV_BUTTON: Rect = { x: 70, y: 306, width: 56, height: 80 };
-const NEXT_BUTTON: Rect = { x: 834, y: 306, width: 56, height: 80 };
-const QUIT_BUTTON: Rect = { x: 190, y: 542, width: 190, height: 64 };
-const NEXT_ROUND_BUTTON: Rect = { x: 430, y: 542, width: 340, height: 64 };
-const BUTTON_TEXT_SIZE = 16;
+const REVIEW_IMAGES = { bird: chatGptBirdFlyAsset.src, goldenBird: chatGptGoldenBirdFlyAsset.src };
+const BIRD_COLUMNS = 4;
+const BIRD_ROWS = 3;
+const PANEL: Rect = { x: 36, y: 32, width: 888, height: 656 };
+const CONTENT: Rect = { x: 80, y: 132, width: 800, height: 440 };
+const SUMMARY_STATS_PANEL: Rect = { x: 140, y: 280, width: 680, height: 170 };
+const QUIT_BUTTON: Rect = { x: 220, y: 596, width: 180, height: 68 };
+const NEXT_ROUND_BUTTON: Rect = { x: 432, y: 596, width: 308, height: 68 };
+const BUTTON_TEXT_SIZE_PORTRAIT = 16;
+const BUTTON_TEXT_SIZE_DESKTOP = 18;
 const SUMMARY_ROUND_Y = 160;
 const SUMMARY_MODE_Y = 210;
-const SUMMARY_STATS_LABEL_Y = 320;
-const SUMMARY_STATS_VALUE_Y = 376;
+const SUMMARY_STATS_LABEL_Y = 318;
+const SUMMARY_STATS_VALUE_Y = 378;
 
 function rectStyle(rect: Rect, layout: GameplayLayoutProfile): CSSProperties {
   return {
@@ -37,14 +40,14 @@ function rectStyle(rect: Rect, layout: GameplayLayoutProfile): CSSProperties {
   };
 }
 
-function drawButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, primary = false) {
+function drawButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, primary = false, textSize = BUTTON_TEXT_SIZE_PORTRAIT) {
   drawPixelPanel(ctx, rect, {
     fill: primary ? "#e79a1b" : "#2a2a34",
     stroke: "#08080c",
     lineWidth: 5
   });
   drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
-    size: BUTTON_TEXT_SIZE,
+    size: textSize,
     color: primary ? "#09090d" : "#fff9e8",
     align: "center",
     baseline: "middle",
@@ -61,62 +64,260 @@ function drawLimitedText(
   lineHeight: number,
   maxLines: number,
   size: number,
-  color = "#fff9e8"
+  color = "#fff9e8",
+  align: CanvasTextAlign = "left"
 ) {
   const lines = wrapPixelText(ctx, text, maxWidth, size);
   for (let index = 0; index < Math.min(lines.length, maxLines); index += 1) {
     const suffix = index === maxLines - 1 && lines.length > maxLines ? "..." : "";
-    drawPixelText(ctx, `${lines[index]}${suffix}`, x, y + index * lineHeight, { size, color });
+    drawPixelText(ctx, `${lines[index]}${suffix}`, x, y + index * lineHeight, { size, color, align });
   }
 }
 
+function drawTweetBirdSeparator(
+  ctx: CanvasRenderingContext2D,
+  birdImage: HTMLImageElement | undefined,
+  centerX: number,
+  centerY: number,
+  size: number,
+  timeMs: number
+) {
+  if (!birdImage) return;
+
+  ctx.imageSmoothingEnabled = false;
+  const cellWidth = birdImage.naturalWidth / BIRD_COLUMNS;
+  const cellHeight = birdImage.naturalHeight / BIRD_ROWS;
+  const frameIndex = Math.floor((timeMs / 1000) * 12) % BIRD_COLUMNS;
+  ctx.drawImage(
+    birdImage,
+    frameIndex * cellWidth,
+    0,
+    cellWidth,
+    cellHeight,
+    centerX - size / 2,
+    centerY - size / 2,
+    size,
+    size
+  );
+}
+
+function drawGoldenSummaryCard(
+  ctx: CanvasRenderingContext2D,
+  result: RoundResult,
+  panel: Rect,
+  isPortrait: boolean,
+  images: Record<string, HTMLImageElement>,
+  timeMs: number
+) {
+  const summary = result.goldenFlush;
+  if (!summary) return;
+
+  const titleSize = isPortrait ? 22 : 28;
+  const subtitleSize = isPortrait ? 12 : 14;
+  const valueSize = isPortrait ? 36 : 48;
+  const labelSize = isPortrait ? 12 : 14;
+
+  drawPixelText(ctx, "GOLDEN FLUSH", panel.x + panel.width / 2, panel.y + (isPortrait ? 24 : 32), {
+    size: titleSize,
+    color: "#f5c542",
+    align: "center"
+  });
+  drawPixelText(ctx, "ONE-SHOT MASS DELETE", panel.x + panel.width / 2, panel.y + (isPortrait ? 50 : 64), {
+    size: subtitleSize,
+    color: "#fff3c4",
+    align: "center"
+  });
+
+  const goldenBird = images.goldenBird;
+  const birdSize = isPortrait ? 88 : 110;
+  const birdCenterX = panel.x + (isPortrait ? panel.width / 2 : panel.width * 0.22);
+  const birdCenterY = panel.y + (isPortrait ? 130 : 150);
+
+  if (goldenBird) {
+    ctx.imageSmoothingEnabled = false;
+    const cellWidth = goldenBird.naturalWidth / BIRD_COLUMNS;
+    const cellHeight = goldenBird.naturalHeight / BIRD_ROWS;
+    const frameIndex = Math.floor((timeMs / 1000) * 12) % BIRD_COLUMNS;
+    const driftX = Math.sin(timeMs / 420) * (isPortrait ? 8 : 14);
+    const driftY = Math.cos(timeMs / 360) * (isPortrait ? 4 : 6);
+    ctx.drawImage(
+      goldenBird,
+      frameIndex * cellWidth,
+      0,
+      cellWidth,
+      cellHeight,
+      birdCenterX - birdSize / 2 + driftX,
+      birdCenterY - birdSize / 2 + driftY,
+      birdSize,
+      birdSize
+    );
+  }
+
+  const statsCenterX = isPortrait ? panel.x + panel.width / 2 : panel.x + panel.width * 0.65;
+  const statsStartY = isPortrait ? panel.y + 196 : panel.y + 90;
+
+  drawPixelText(ctx, "TWEETS DELETED", statsCenterX, statsStartY, {
+    size: labelSize,
+    color: "#fff9e8",
+    align: "center"
+  });
+  drawPixelText(ctx, String(summary.tweetsDeleted), statsCenterX, statsStartY + (isPortrait ? 38 : 46), {
+    size: valueSize,
+    color: "#f5c542",
+    align: "center"
+  });
+
+  const bonusRow = summary.scoreFromFlush + summary.goldenDuckPoints;
+  drawPixelText(
+    ctx,
+    `+${bonusRow.toLocaleString()} BONUS`,
+    statsCenterX,
+    statsStartY + (isPortrait ? 92 : 108),
+    {
+      size: subtitleSize,
+      color: "#70e27b",
+      align: "center"
+    }
+  );
+
+  if (summary.failed > 0) {
+    drawPixelText(
+      ctx,
+      `${summary.failed} delete${summary.failed === 1 ? "" : "s"} failed`,
+      statsCenterX,
+      statsStartY + (isPortrait ? 118 : 134),
+      {
+        size: subtitleSize,
+        color: "#ff7676",
+        align: "center"
+      }
+    );
+  }
+}
+
+function drawTweetCreditList(
+  ctx: CanvasRenderingContext2D,
+  hits: RoundResult["hits"],
+  content: Rect,
+  timeMs: number,
+  isPortrait: boolean,
+  images: Record<string, HTMLImageElement>
+) {
+  const paddingX = isPortrait ? 24 : 56;
+  const textSize = isPortrait ? 16 : 20;
+  const lineHeight = isPortrait ? 29 : 34;
+  const metricsSize = isPortrait ? 12 : 15;
+  const metricsGap = isPortrait ? 12 : 18;
+  const itemGap = isPortrait ? 28 : 40;
+  const birdSize = isPortrait ? 44 : 56;
+  const birdTopGap = isPortrait ? 36 : 28;
+  const birdBottomGap = isPortrait ? 8 : 12;
+  const separatorBlock = birdTopGap + birdSize + birdBottomGap;
+  const maxWidth = content.width - paddingX * 2;
+  const maxLines = isPortrait ? 4 : 3;
+  const x = content.x + content.width / 2;
+  const align: CanvasTextAlign = "center";
+  const birdCenterX = content.x + content.width / 2;
+  const tweetHits = hits.filter((hit) => hit.tweet);
+
+  const items = tweetHits.map((hit, index) => {
+    const tweet = hit.tweet!;
+    const wrapped = wrapPixelText(ctx, `"${truncate(tweet.text, isPortrait ? 190 : 220)}"`, maxWidth, textSize);
+    const lines = wrapped.slice(0, maxLines);
+    if (wrapped.length > maxLines && lines.length > 0) lines[lines.length - 1] = `${lines[lines.length - 1]}...`;
+    const tweetBlockHeight = lines.length * lineHeight + metricsGap + metricsSize;
+    const hasSeparator = index < tweetHits.length - 1;
+    return {
+      lines,
+      metrics: `${tweet.likes} likes  ${tweet.reposts} reposts  ${tweet.replies} replies`,
+      tweetBlockHeight,
+      hasSeparator,
+      height: tweetBlockHeight + (hasSeparator ? separatorBlock : itemGap)
+    };
+  });
+
+  const clipInset = 10;
+  const viewportTop = content.y + clipInset;
+  const viewportBottom = content.y + content.height - clipInset;
+  const viewportHeight = viewportBottom - viewportTop;
+  const totalHeight = items.reduce((sum, item) => sum + item.height, 0);
+  const scrollSpeed = isPortrait ? 0.034 : 0.045;
+  const scrollMax = totalHeight;
+  const scrollY = scrollMax > 0 ? Math.min(timeMs * scrollSpeed, scrollMax) : 0;
+  let y = viewportBottom - scrollY;
+  const scrimHeight = isPortrait ? 80 : 84;
+  const panelFill = "#101018";
+  const scrimFadeColor = "rgba(16, 16, 24, 0)";
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(content.x + clipInset, content.y + clipInset, content.width - clipInset * 2, content.height - clipInset * 2);
+  ctx.clip();
+
+  for (const item of items) {
+    for (let index = 0; index < item.lines.length; index += 1) {
+      drawPixelText(ctx, item.lines[index], x, y + index * lineHeight, {
+        size: textSize,
+        color: "#fff9e8",
+        align
+      });
+    }
+    const metricsY = y + item.lines.length * lineHeight + metricsGap;
+    drawPixelText(ctx, item.metrics, content.x + content.width / 2, metricsY, {
+      size: metricsSize,
+      color: "#e79a1b",
+      align
+    });
+
+    y += item.tweetBlockHeight;
+
+    if (item.hasSeparator) {
+      const birdCenterY = y + birdTopGap + birdSize / 2;
+      drawTweetBirdSeparator(ctx, images.bird, birdCenterX, birdCenterY, birdSize, timeMs);
+      y += separatorBlock;
+    } else {
+      y += itemGap;
+    }
+  }
+
+  const topGradient = ctx.createLinearGradient(0, viewportTop, 0, viewportTop + scrimHeight);
+  topGradient.addColorStop(0, panelFill);
+  topGradient.addColorStop(1, scrimFadeColor);
+  ctx.fillStyle = topGradient;
+  ctx.fillRect(content.x + clipInset, viewportTop, content.width - clipInset * 2, scrimHeight);
+
+  const bottomGradient = ctx.createLinearGradient(0, viewportBottom - scrimHeight, 0, viewportBottom);
+  bottomGradient.addColorStop(0, scrimFadeColor);
+  bottomGradient.addColorStop(1, panelFill);
+  ctx.fillStyle = bottomGradient;
+  ctx.fillRect(content.x + clipInset, viewportBottom - scrimHeight, content.width - clipInset * 2, scrimHeight);
+
+  ctx.restore();
+}
+
 export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeGame, onNextRound }: Props) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet), [result.hits]);
+  const startTimeRef = useRef<number | null>(null);
+  const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet && !hit.isGolden), [result.hits]);
+  const nonGoldenHitCount = useMemo(() => result.hits.filter((hit) => !hit.isGolden).length, [result.hits]);
   const isClayRound = result.mode === "C";
   const isArcadeFallbackRound = !isClayRound && !result.isLiveTweetRound;
-  const currentHit = destructiveHits[currentIndex] ?? null;
-  const currentTweet = currentHit?.tweet;
-  const hasTweetReview = Boolean(currentHit && currentTweet);
+  const hasTweetReview = destructiveHits.length > 0;
+  const hasGoldenFlush = Boolean(result.goldenFlush && result.goldenFlush.tweetsDeleted > 0);
   const isPortrait = isPortraitLayout(layout);
-  const panel = isPortrait ? { x: 24, y: 42, width: 492, height: 876 } : PANEL;
-  const content = isPortrait ? { x: 62, y: 250, width: 416, height: 382 } : CONTENT;
-  const previousButton = isPortrait ? { x: 26, y: 656, width: 72, height: 72 } : PREV_BUTTON;
-  const nextButton = isPortrait ? { x: 442, y: 656, width: 72, height: 72 } : NEXT_BUTTON;
-  const quitButton = isPortrait ? { x: 58, y: 800, width: 180, height: 66 } : QUIT_BUTTON;
-  const nextRoundButton = isPortrait ? { x: 276, y: 800, width: 206, height: 66 } : NEXT_ROUND_BUTTON;
-
-  useEffect(() => {
-    setCurrentIndex((index) => Math.min(index, Math.max(destructiveHits.length - 1, 0)));
-  }, [destructiveHits.length]);
-
-  const showPreviousTweet = useCallback(() => {
-    if (destructiveHits.length === 0) return;
-    setCurrentIndex((index) => (index + destructiveHits.length - 1) % destructiveHits.length);
-  }, [destructiveHits.length]);
-
-  const showNextTweet = useCallback(() => {
-    if (destructiveHits.length === 0) return;
-    setCurrentIndex((index) => (index + 1) % destructiveHits.length);
-  }, [destructiveHits.length]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        showPreviousTweet();
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        showNextTweet();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showNextTweet, showPreviousTweet]);
+  const panel = isPortrait ? { x: 24, y: 18, width: 492, height: 900 } : PANEL;
+  const portraitButtonY = panel.y + panel.height - 12 - 66 - 8;
+  const portraitContentY = 94;
+  const portraitContentHeight = portraitButtonY - 12 - portraitContentY;
+  const content = isPortrait
+    ? { x: 62, y: portraitContentY, width: 416, height: portraitContentHeight }
+    : CONTENT;
+  const quitButton = isPortrait ? { x: 58, y: portraitButtonY, width: 180, height: 66 } : QUIT_BUTTON;
+  const nextRoundButton = isPortrait ? { x: 276, y: portraitButtonY, width: 206, height: 66 } : NEXT_ROUND_BUTTON;
 
   const drawFrame = useCallback(
-    ({ ctx }: { ctx: CanvasRenderingContext2D }) => {
+    ({ ctx, images, timeMs }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement>; timeMs: number }) => {
+      if (startTimeRef.current === null) startTimeRef.current = timeMs;
+      const localTimeMs = timeMs - startTimeRef.current;
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = "#02030a";
       ctx.fillRect(0, 0, layout.width, layout.height);
@@ -135,14 +336,26 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
             ? "TWEET REVIEW"
             : "NO TWEETS DELETED";
 
-      if (hasTweetReview && currentHit && currentTweet) {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 118 : 104, {
-          size: isPortrait ? 20 : 22,
+      if (hasGoldenFlush) {
+        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, {
+          size: isPortrait ? 20 : 24,
+          color: "#f5c542",
+          align: "center"
+        });
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${nonGoldenHitCount}`, layout.width / 2, isPortrait ? 64 : 104, {
+          size: isPortrait ? 15 : 18,
+          color: "#70e27b",
+          align: "center"
+        });
+        drawGoldenSummaryCard(ctx, result, content, isPortrait, images, localTimeMs);
+      } else if (hasTweetReview) {
+        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, {
+          size: isPortrait ? 20 : 24,
           color: "#e79a1b",
           align: "center"
         });
-        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 174 : 148, {
-          size: isPortrait ? 15 : 19,
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 64 : 104, {
+          size: isPortrait ? 15 : 18,
           color: "#70e27b",
           align: "center"
         });
@@ -151,11 +364,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
           stroke: "#2a2a34",
           lineWidth: 4
         });
-        drawLimitedText(ctx, `"${truncate(currentTweet.text, 220)}"`, content.x + 24, content.y + 34, content.width - 48, isPortrait ? 35 : 40, isPortrait ? 7 : 5, isPortrait ? 19 : 22);
-        drawPixelText(ctx, `${currentTweet.likes} likes  ${currentTweet.reposts} reposts  ${currentTweet.replies} replies`, content.x + 24, content.y + content.height - 34, {
-          size: isPortrait ? 14 : 16,
-          color: "#e79a1b"
-        });
+        drawTweetCreditList(ctx, destructiveHits, content, localTimeMs, isPortrait, images);
       } else {
         drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, {
           size: isPortrait ? 19 : 28,
@@ -201,36 +410,25 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         });
       }
 
-      if (destructiveHits.length > 1) {
-        drawPixelText(ctx, "<", previousButton.x + previousButton.width / 2, previousButton.y + 18, {
-          size: 36,
-          color: "#e79a1b",
-          align: "center"
-        });
-        drawPixelText(ctx, ">", nextButton.x + nextButton.width / 2, nextButton.y + 18, {
-          size: 36,
-          color: "#e79a1b",
-          align: "center"
-        });
-      }
-
-      drawButton(ctx, quitButton, "QUIT");
-      drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true);
+      const buttonTextSize = isPortrait ? BUTTON_TEXT_SIZE_PORTRAIT : BUTTON_TEXT_SIZE_DESKTOP;
+      drawButton(ctx, quitButton, "QUIT", false, buttonTextSize);
+      drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true, buttonTextSize);
     },
     [
-      currentHit,
-      currentTweet,
+      content,
       destructiveHits.length,
+      destructiveHits,
+      hasGoldenFlush,
       hasTweetReview,
       isArcadeFallbackRound,
       isClayRound,
       isPortrait,
       layout,
-      nextButton,
       nextRoundButton,
+      nonGoldenHitCount,
       panel,
-      previousButton,
       quitButton,
+      result,
       result.hits.length,
       result.roundNumber,
       result.score
@@ -243,20 +441,10 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       presentation="crisp"
       layout={layout}
       ariaLabel={`Round ${result.roundNumber} review`}
-      images={EMPTY_IMAGES}
+      images={REVIEW_IMAGES}
       drawFrame={drawFrame}
     >
       <div className="review-hit-regions" aria-label={`Round ${result.roundNumber} review controls`}>
-        {destructiveHits.length > 1 ? (
-          <>
-            <button className="review-hit-button" type="button" style={rectStyle(previousButton, layout)} onClick={showPreviousTweet} aria-label="Previous bagged tweet">
-              Previous
-            </button>
-            <button className="review-hit-button" type="button" style={rectStyle(nextButton, layout)} onClick={showNextTweet} aria-label="Next bagged tweet">
-              Next
-            </button>
-          </>
-        ) : null}
         <button className="review-hit-button" type="button" style={rectStyle(quitButton, layout)} onClick={onChangeGame}>
           Quit
         </button>
