@@ -12,6 +12,7 @@ import portraitTreeAsset from "../../Assets/Sprites/Environment/tree_9x16.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_golden_birdsprite_fly.png";
 import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
+import goldenBirdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/golden_bird_shot.png";
 import clayBackgroundAsset from "../../Assets/Sprites/Clay/clay_bg.jpg";
 import clayFilledPigeonAsset from "../../Assets/Sprites/Clay/clay_filled_pigeon.jpg";
 import clayHitAsset from "../../Assets/Sprites/Clay/clay_hit_counter.jpg";
@@ -1655,6 +1656,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const flyFramesRef = useRef<FlyFrameImages | null>(null);
   const goldenFlyFramesRef = useRef<FlyFrameImages | null>(null);
   const birdShotImageRef = useRef<HTMLImageElement | null>(null);
+  const goldenBirdShotImageRef = useRef<HTMLImageElement | null>(null);
   const clayTargetAtlasRef = useRef<CanvasImageSource | null>(null);
   const uiImagesRef = useRef<Partial<Record<UiImageKey, HTMLImageElement>>>({});
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -1861,6 +1863,19 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     return () => {
       image.onload = null;
       birdShotImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const image = new Image();
+    image.onload = () => {
+      goldenBirdShotImageRef.current = image;
+    };
+    image.src = goldenBirdShotAsset.src;
+
+    return () => {
+      image.onload = null;
+      goldenBirdShotImageRef.current = null;
     };
   }, []);
 
@@ -2189,7 +2204,8 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       for (const target of state.targets) {
         if (target.status !== "escaped" && target.fliesBehindTree) {
           const frames = target.isGolden ? goldenFlyFramesRef.current : flyFramesRef.current;
-          drawTarget(ctx, image, target, timeMs, frames, birdShotImageRef.current);
+          const shotImage = target.isGolden ? goldenBirdShotImageRef.current : birdShotImageRef.current;
+          drawTarget(ctx, image, target, timeMs, frames, shotImage);
         }
       }
 
@@ -2199,7 +2215,8 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     for (const target of state.targets) {
       if (target.status !== "escaped" && (isClayMode || !target.fliesBehindTree)) {
         const frames = target.isGolden ? goldenFlyFramesRef.current : flyFramesRef.current;
-        drawTarget(ctx, image, target, timeMs, frames, birdShotImageRef.current, clayTargetAtlasRef.current);
+        const shotImage = target.isGolden ? goldenBirdShotImageRef.current : birdShotImageRef.current;
+        drawTarget(ctx, image, target, timeMs, frames, shotImage, clayTargetAtlasRef.current);
       }
     }
 
