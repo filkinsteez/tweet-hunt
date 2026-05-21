@@ -1,30 +1,42 @@
 export type GameSoundKey =
+  | "clayShootingIntro"
   | "clayPigeonFlying"
   | "clayPigeonHit"
   | "clayPigeonLaunch"
   | "dogBark"
   | "dogLaugh"
   | "dogRetrieve"
+  | "duckHuntTitle"
   | "duckFalling"
   | "duckFlying"
   | "duckGroundHit"
   | "duckQuack"
+  | "failedRound"
+  | "gameOver"
+  | "gameStart"
   | "gunShoot"
-  | "perfectRound";
+  | "perfectRound"
+  | "roundClear";
 
 const SOUND_URLS: Record<GameSoundKey, string> = {
+  clayShootingIntro: new URL("../../Assets/Audio/clay_shooting_intro.wav", import.meta.url).href,
   clayPigeonFlying: new URL("../../Assets/Audio/clay_pigeon_flying.wav", import.meta.url).href,
   clayPigeonHit: new URL("../../Assets/Audio/clay_pigeon_hit.wav", import.meta.url).href,
   clayPigeonLaunch: new URL("../../Assets/Audio/clay_pigeon_launch.wav", import.meta.url).href,
   dogBark: new URL("../../Assets/Audio/dog_bark.wav", import.meta.url).href,
   dogLaugh: new URL("../../Assets/Audio/dog_laugh.wav", import.meta.url).href,
   dogRetrieve: new URL("../../Assets/Audio/dog_retrieve.wav", import.meta.url).href,
+  duckHuntTitle: new URL("../../Assets/Audio/duck_hunt_title.wav", import.meta.url).href,
   duckFalling: new URL("../../Assets/Audio/duck_falling.wav", import.meta.url).href,
   duckFlying: new URL("../../Assets/Audio/duck_flying.wav", import.meta.url).href,
   duckGroundHit: new URL("../../Assets/Audio/duck_ground_hit.wav", import.meta.url).href,
   duckQuack: new URL("../../Assets/Audio/duck_quack.wav", import.meta.url).href,
+  failedRound: new URL("../../Assets/Audio/failed_round.wav", import.meta.url).href,
+  gameOver: new URL("../../Assets/Audio/game_over.wav", import.meta.url).href,
+  gameStart: new URL("../../Assets/Audio/game_start.wav", import.meta.url).href,
   gunShoot: new URL("../../Assets/Audio/gun_shoot.wav", import.meta.url).href,
-  perfectRound: new URL("../../Assets/Audio/perfect_round.wav", import.meta.url).href
+  perfectRound: new URL("../../Assets/Audio/perfect_round.wav", import.meta.url).href,
+  roundClear: new URL("../../Assets/Audio/round_clear.wav", import.meta.url).href
 };
 
 const POOL_SIZE = 4;
@@ -106,6 +118,31 @@ class GameAudio {
     } finally {
       this.loops.delete(key);
     }
+  }
+
+  stopAll() {
+    if (typeof window === "undefined") return;
+
+    for (const pool of this.pools.values()) {
+      for (const audio of pool) {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch {
+          // Audio should never break gameplay.
+        }
+      }
+    }
+
+    for (const audio of this.loops.values()) {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch {
+        // Audio should never break gameplay.
+      }
+    }
+    this.loops.clear();
   }
 
   unlock() {

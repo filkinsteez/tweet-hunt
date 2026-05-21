@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import titleAsset from "../../Assets/Sprites/UI/title.jpg";
 import titleSelectionAsset from "../../Assets/Sprites/UI/UI_title_selection.jpg";
 import welcomePlayAsset from "../../Assets/Sprites/UI/welcome_screen_play.png";
 import welcomeTitleAsset from "../../Assets/Sprites/UI/tweet_hunt_title.png";
+import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import { ArcadeRoundReview } from "./ArcadeRoundReview";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { GameCanvas } from "./GameCanvas";
 import { TARGETS_PER_ROUND } from "@/game/constants";
+import { gameAudio } from "@/game/audio";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
 import { isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { selectTweetCandidates } from "@/game/mockTweets";
-import { drawFullscreenImage, drawPixelText } from "@/game/uiDraw";
+import { drawFullscreenImage, drawPixelText, type Rect } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
 import { useDebugMode } from "@/hooks/useDebugMode";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
@@ -23,6 +25,22 @@ type AuthError = null | "denied" | "state-mismatch" | "token-error" | "missing-c
 
 type MeResponse = { authorized: boolean; handle?: string; name?: string; expired?: boolean };
 type CandidatesResponse = { tweets?: TweetCandidate[]; error?: string };
+type WelcomeBirdRuntime = {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  sizeScale: number;
+  layer: "behindText" | "front";
+  pattern: "diagonal" | "swoop";
+  hitAtMs?: number;
+  hitX?: number;
+  hitY?: number;
+  hitDirection?: 1 | -1;
+  respawnAtMs?: number;
+};
+type WelcomeBirdSnapshot = Rect & { id: string; centerX: number; centerY: number; direction: 1 | -1 };
 
 const AUTH_ERROR_COPY: Record<NonNullable<AuthError>, string> = {
   denied: "Authorization was canceled. You can try again whenever you're ready.",
@@ -59,6 +77,11 @@ const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
 const MOBILE_TITLE_HEADING_SIZE = 23;
 const MOBILE_TITLE_LABEL_SIZE = 31;
 const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
+const WELCOME_BIRD_COLUMNS = 4;
+const WELCOME_BIRD_ROWS = 3;
+const WELCOME_BIRD_SIZE = 138;
+const WELCOME_BIRD_HIT_PADDING = 24;
+const WELCOME_BIRD_RESPAWN_DELAY_MS = 1500;
 const MOBILE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; width: number; height: number }> = {
   A: { x: 70, y: 348, width: 400, height: 128 },
   B: { x: 70, y: 506, width: 400, height: 128 },
@@ -96,6 +119,143 @@ function canvasRectStyle(layout: GameplayLayoutProfile, rect: { x: number; y: nu
   };
 }
 
+function rectContains(rect: Rect, point: { x: number; y: number }) {
+  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+}
+
+function createWelcomeBirds(layout: GameplayLayoutProfile): WelcomeBirdRuntime[] {
+  const isPortrait = isPortraitLayout(layout);
+  return [
+    createWelcomeBird(layout, "welcome-bird-top", "front", "diagonal", 1.1, 0),
+    createWelcomeBird(layout, "welcome-bird-text", "behindText", "swoop", 0.92, 1)
+  ];
+}
+
+function createWelcomeBird(
+  layout: GameplayLayoutProfile,
+  id: string,
+  layer: WelcomeBirdRuntime["layer"],
+  pattern: WelcomeBirdRuntime["pattern"],
+  sizeScale: number,
+  spawnIndex: number
+): WelcomeBirdRuntime {
+  const isPortrait = isPortraitLayout(layout);
+  const fromLeft = spawnIndex % 2 === 0;
+  return {
+    id,
+    x: fromLeft ? -welcomeBirdSize(layout) : layout.width + welcomeBirdSize(layout),
+    y: layout.height * (layer === "behindText" ? (isPortrait ? 0.52 : 0.53) : isPortrait ? 0.17 : 0.2),
+    vx: (fromLeft ? 1 : -1) * (pattern === "swoop" ? (isPortrait ? 214 : 356) : isPortrait ? 188 : 318),
+    vy: (spawnIndex % 3 === 0 ? 1 : -1) * (pattern === "swoop" ? (isPortrait ? 146 : 192) : isPortrait ? 122 : 158),
+    sizeScale,
+    layer,
+    pattern
+  };
+}
+
+function respawnWelcomeBird(layout: GameplayLayoutProfile, bird: WelcomeBirdRuntime, spawnIndex: number) {
+  const next = createWelcomeBird(layout, bird.id, bird.layer, bird.pattern, bird.sizeScale, spawnIndex);
+  Object.assign(bird, next);
+  delete bird.hitAtMs;
+  delete bird.hitX;
+  delete bird.hitY;
+  delete bird.hitDirection;
+  delete bird.respawnAtMs;
+}
+
+function updateWelcomeBirds(birds: WelcomeBirdRuntime[], layout: GameplayLayoutProfile, deltaMs: number, timeMs: number) {
+  const dt = Math.min(deltaMs, 50) / 1000;
+  const baseSize = welcomeBirdSize(layout);
+  const topBound = isPortraitLayout(layout) ? 48 : 34;
+  const bottomBound = layout.height - (isPortraitLayout(layout) ? 138 : 90);
+
+  for (const bird of birds) {
+    if (bird.respawnAtMs !== undefined) continue;
+    if (bird.hitAtMs !== undefined) continue;
+
+    const patternX = bird.pattern === "swoop" ? Math.cos(timeMs / 330) * 62 : 0;
+    const patternY = bird.pattern === "swoop" ? Math.sin(timeMs / 240) * 118 : 0;
+    const size = baseSize * bird.sizeScale;
+    const margin = size / 2;
+
+    bird.x += (bird.vx + patternX) * dt;
+    bird.y += (bird.vy + patternY) * dt;
+
+    if (bird.x < margin && bird.vx < 0) {
+      bird.x = margin;
+      bird.vx = Math.abs(bird.vx);
+    } else if (bird.x > layout.width - margin && bird.vx > 0) {
+      bird.x = layout.width - margin;
+      bird.vx = -Math.abs(bird.vx);
+    }
+
+    if (bird.y < topBound + margin) {
+      bird.y = topBound + margin;
+      bird.vy = Math.abs(bird.vy);
+    } else if (bird.y > bottomBound - margin) {
+      bird.y = bottomBound - margin;
+      bird.vy = -Math.abs(bird.vy);
+    }
+  }
+}
+
+function welcomeBirdSize(layout: GameplayLayoutProfile) {
+  return isPortraitLayout(layout) ? 126 : WELCOME_BIRD_SIZE;
+}
+
+function drawWelcomeBird(
+  ctx: CanvasRenderingContext2D,
+  birdImage: HTMLImageElement | undefined,
+  timeMs: number,
+  layout: GameplayLayoutProfile,
+  bird: WelcomeBirdRuntime
+): WelcomeBirdSnapshot | null {
+  if (!birdImage) return null;
+  if (bird.respawnAtMs !== undefined) return null;
+
+  ctx.imageSmoothingEnabled = false;
+  let x = bird.x;
+  let y = bird.y;
+  let direction: 1 | -1 = bird.vx >= 0 ? 1 : -1;
+  let frameIndex = Math.floor((timeMs / 1000) * 12) % WELCOME_BIRD_COLUMNS;
+  let rowIndex = Math.abs(bird.vy) > 52 ? 1 : 0;
+  let rotation = Math.max(Math.min(bird.vy / 320, 0.25), -0.25);
+
+  if (bird.hitAtMs !== undefined) {
+    const fallAgeSeconds = Math.max((timeMs - bird.hitAtMs) / 1000, 0);
+    direction = bird.hitDirection ?? direction;
+    x = (bird.hitX ?? bird.x) + direction * fallAgeSeconds * 70;
+    y = (bird.hitY ?? bird.y) + fallAgeSeconds * 220 + fallAgeSeconds * fallAgeSeconds * 620;
+    frameIndex = 1;
+    rowIndex = 0;
+    rotation = direction * (0.7 + fallAgeSeconds * 2.8);
+  }
+
+  const cellWidth = birdImage.naturalWidth / WELCOME_BIRD_COLUMNS;
+  const cellHeight = birdImage.naturalHeight / WELCOME_BIRD_ROWS;
+  const size = welcomeBirdSize(layout) * bird.sizeScale;
+
+  if (y - size / 2 > layout.height + 80) return null;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(direction, 1);
+  ctx.rotate(rotation);
+  ctx.drawImage(birdImage, frameIndex * cellWidth, rowIndex * cellHeight, cellWidth, cellHeight, -size / 2, -size / 2, size, size);
+  ctx.restore();
+
+  return {
+    id: bird.id,
+    x: x - size / 2 - WELCOME_BIRD_HIT_PADDING,
+    y: y - size / 2 - WELCOME_BIRD_HIT_PADDING,
+    width: size + WELCOME_BIRD_HIT_PADDING * 2,
+    height: size + WELCOME_BIRD_HIT_PADDING * 2,
+    centerX: x,
+    centerY: y,
+    direction
+  };
+}
+
 export function TweetHuntApp() {
   const layout = useGameplayLayout();
   const debugMode = useDebugMode();
@@ -115,6 +275,11 @@ export function TweetHuntApp() {
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
   const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
+  const welcomeBirdsRef = useRef<WelcomeBirdRuntime[]>([]);
+  const welcomeBirdHitRegionsRef = useRef<WelcomeBirdSnapshot[]>([]);
+  const welcomeBirdFrameAtRef = useRef<number | null>(null);
+  const welcomePlayButtonRef = useRef<Rect | null>(null);
+  const welcomeBirdSpawnCounterRef = useRef(2);
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -142,12 +307,19 @@ export function TweetHuntApp() {
   }, []);
 
   useEffect(() => {
-    if (stage !== "welcome") return undefined;
-    const options = { capture: true };
+    if (stage !== "welcome") return;
+    welcomeBirdsRef.current = createWelcomeBirds(layout);
+    welcomeBirdHitRegionsRef.current = [];
+    welcomeBirdFrameAtRef.current = null;
+    welcomeBirdSpawnCounterRef.current = 2;
+  }, [layout, stage]);
 
-    function handleStart() {
-      setStage("title");
-    }
+  useEffect(() => {
+    if (stage === "title") gameAudio.play("duckHuntTitle", 0.74);
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "welcome") return undefined;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Enter" && event.key !== " ") return;
@@ -155,17 +327,9 @@ export function TweetHuntApp() {
       setStage("title");
     }
 
-    document.addEventListener("pointerdown", handleStart, options);
-    document.addEventListener("mousedown", handleStart, options);
-    document.addEventListener("click", handleStart, options);
-    document.addEventListener("touchstart", handleStart, options);
-    document.addEventListener("keydown", handleKeyDown, options);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", handleStart, options);
-      document.removeEventListener("mousedown", handleStart, options);
-      document.removeEventListener("click", handleStart, options);
-      document.removeEventListener("touchstart", handleStart, options);
-      document.removeEventListener("keydown", handleKeyDown, options);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [stage]);
 
@@ -205,6 +369,7 @@ export function TweetHuntApp() {
   }
 
   function startArcadeFallback(mode: GameMode, message?: string) {
+    gameAudio.stopAll();
     setConfig((current) => ({ ...current, mode }));
     setRoundTweets([]);
     setIsLiveTweetRound(false);
@@ -233,6 +398,7 @@ export function TweetHuntApp() {
       setConfig((current) => ({ ...current, mode }));
       setLastResult(null);
       setPendingMode(null);
+      gameAudio.stopAll();
       setStage("play");
     } catch (error) {
       setTweetLoadError(error instanceof Error ? error.message : "Could not load live tweets from X.");
@@ -246,6 +412,7 @@ export function TweetHuntApp() {
   }
 
   function startPracticeMode(mode: GameMode) {
+    gameAudio.stopAll();
     setConfig((current) => ({ ...current, mode }));
     setRoundTweets([]);
     setIsLiveTweetRound(false);
@@ -258,6 +425,7 @@ export function TweetHuntApp() {
 
   function startDebugRound(mode: GameMode) {
     const tweets = selectTweetCandidates({ source: "random" }, TARGETS_PER_ROUND);
+    gameAudio.stopAll();
     setConfig((current) => ({ ...current, mode }));
     setRoundTweets(tweets);
     setIsLiveTweetRound(true);
@@ -344,19 +512,75 @@ export function TweetHuntApp() {
     setStage("title");
   }
 
+  function handleWelcomeTap(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    gameAudio.play("gunShoot", 0.72);
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const point = {
+      x: ((event.clientX - bounds.left) / bounds.width) * layout.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * layout.height
+    };
+    const birdHit = welcomeBirdHitRegionsRef.current.find((region) => rectContains(region, point));
+
+    if (birdHit) {
+      const bird = welcomeBirdsRef.current.find((candidate) => candidate.id === birdHit.id);
+      event.preventDefault();
+      event.stopPropagation();
+      if (bird && bird.hitAtMs === undefined) {
+        bird.hitAtMs = performance.now();
+        bird.hitX = birdHit.centerX;
+        bird.hitY = birdHit.centerY;
+        bird.hitDirection = birdHit.direction;
+      }
+      gameAudio.play("duckFalling", 0.68);
+      return;
+    }
+
+    const playButton = welcomePlayButtonRef.current;
+    if (playButton && rectContains(playButton, point)) showTitleScreen();
+  }
+
+  function stopAudioAndShowTitleScreen() {
+    gameAudio.stopAll();
+    setStage("title");
+  }
+
   const hasIntroBannerContent = debugMode || authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
   const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
-  const welcomeScreenImages = useMemo(() => ({ title: welcomeTitleAsset.src, play: welcomePlayAsset.src }), []);
+  const welcomeScreenImages = useMemo(() => ({ title: welcomeTitleAsset.src, play: welcomePlayAsset.src, bird: chatGptBirdFlyAsset.src }), []);
   const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src, title: welcomeTitleAsset.src }), []);
-  const drawWelcomeScreen = useCallback(({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
+  const drawWelcomeScreen = useCallback(({ ctx, images, timeMs }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement>; timeMs: number }) => {
     const isPortrait = isPortraitLayout(layout);
+    if (welcomeBirdsRef.current.length === 0) welcomeBirdsRef.current = createWelcomeBirds(layout);
+    const lastFrameAt = welcomeBirdFrameAtRef.current ?? timeMs;
+    updateWelcomeBirds(welcomeBirdsRef.current, layout, timeMs - lastFrameAt, timeMs);
+    welcomeBirdFrameAtRef.current = timeMs;
+    welcomeBirdHitRegionsRef.current = [];
+
     ctx.fillStyle = "#02030a";
     ctx.fillRect(0, 0, layout.width, layout.height);
     const centerX = layout.width / 2;
     const introLines = ["TWEET HUNT IS AN", "EXPERIMENTAL GAME", "FROM ERIC FILKINS."];
     const actionLines = ["SHOOT FAKE BIRDS.", "DELETE REAL TWEETS."];
+    const drawWelcomeBirdLayer = (layer: WelcomeBirdRuntime["layer"]) => {
+      for (const bird of welcomeBirdsRef.current) {
+        if (bird.layer !== layer) continue;
+        const region = drawWelcomeBird(ctx, images.bird, timeMs, layout, bird);
+        if (region) {
+          welcomeBirdHitRegionsRef.current.push(region);
+        } else if (bird.respawnAtMs !== undefined) {
+          if (timeMs >= bird.respawnAtMs) {
+            respawnWelcomeBird(layout, bird, welcomeBirdSpawnCounterRef.current);
+            welcomeBirdSpawnCounterRef.current += 1;
+          }
+        } else if (bird.hitAtMs !== undefined) {
+          bird.respawnAtMs = timeMs + WELCOME_BIRD_RESPAWN_DELAY_MS;
+        }
+      }
+    };
 
     if (isPortrait) {
       const titleWidth = 470;
@@ -372,6 +596,7 @@ export function TweetHuntApp() {
       const actionTextHeight = bodySize + (actionLines.length - 1) * bodyLineHeight;
       let y = Math.round(titleY + (titleSize?.height ?? 0) + bodyGapFromTitle);
 
+      drawWelcomeBirdLayer("behindText");
       drawCenteredImage(ctx, images.title, centerX, titleY, titleWidth);
       for (const [index, line] of introLines.entries()) {
         drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
@@ -389,7 +614,9 @@ export function TweetHuntApp() {
         });
       }
       y += actionTextHeight + buttonGap;
-      drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+      drawWelcomeBirdLayer("front");
+      const playSize = drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+      welcomePlayButtonRef.current = playSize ? { x: centerX - playSize.width / 2, y, width: playSize.width, height: playSize.height } : null;
       return;
     }
 
@@ -406,6 +633,7 @@ export function TweetHuntApp() {
     const actionTextHeight = bodySize + (actionLines.length - 1) * bodyLineHeight;
     let y = Math.round(titleY + (titleSize?.height ?? 0) + bodyGapFromTitle);
 
+    drawWelcomeBirdLayer("behindText");
     drawCenteredImage(ctx, images.title, centerX, titleY, titleWidth);
     for (const [index, line] of introLines.entries()) {
       drawPixelText(ctx, line, centerX, y + index * bodyLineHeight, {
@@ -423,7 +651,9 @@ export function TweetHuntApp() {
       });
     }
     y += actionTextHeight + buttonGap;
-    drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+    drawWelcomeBirdLayer("front");
+    const playSize = drawCenteredImage(ctx, images.play, centerX, y, playWidth);
+    welcomePlayButtonRef.current = playSize ? { x: centerX - playSize.width / 2, y, width: playSize.width, height: playSize.height } : null;
   }, [layout]);
   const drawTitleScreen = useCallback(
     ({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
@@ -506,10 +736,10 @@ export function TweetHuntApp() {
 
   if (stage === "welcome") {
     return (
-      <main className="game-shell" onClickCapture={showTitleScreen} onPointerDownCapture={showTitleScreen}>
+      <main className="game-shell">
         <div className="game-stage">
           <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel="tweet-hunt welcome screen" images={welcomeScreenImages} drawFrame={drawWelcomeScreen}>
-            <button className="welcome-start-button" type="button" onClick={showTitleScreen} onPointerUp={showTitleScreen} aria-label="Start Tweet Hunt">
+            <button className="welcome-start-button" type="button" onPointerDown={handleWelcomeTap} aria-label="Start Tweet Hunt">
               Start Tweet Hunt
             </button>
           </ArcadeScreenCanvas>
@@ -636,7 +866,7 @@ export function TweetHuntApp() {
             isLiveTweetRound={isLiveTweetRound}
             debugMode={isDebugRound}
             onRoundEnd={handleRoundEnd}
-            onQuit={() => setStage("title")}
+            onQuit={stopAudioAndShowTitleScreen}
           />
         </div>
       </main>
@@ -651,7 +881,7 @@ export function TweetHuntApp() {
             layout={layout}
             result={lastResult}
             onNextRound={nextRound}
-            onChangeGame={() => setStage("title")}
+            onChangeGame={stopAudioAndShowTitleScreen}
           />
         ) : null}
       </div>

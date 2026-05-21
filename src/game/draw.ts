@@ -1,4 +1,14 @@
-import { BIRD_SCALE, CANVAS_HEIGHT, CANVAS_WIDTH, DOG_SCALE, HIT_REACTION_DURATION_MS, TARGETS_PER_ROUND } from "./constants";
+import {
+  BIRD_SCALE,
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  DOG_INTRO_JUMP_MS,
+  DOG_INTRO_JUMP_START_MS,
+  DOG_INTRO_WALK_MS,
+  DOG_SCALE,
+  HIT_REACTION_DURATION_MS,
+  TARGETS_PER_ROUND
+} from "./constants";
 import { frameAt, spriteAtlas, type AnimationName, type FrameName } from "./atlas";
 import type { BirdColor, TargetEntity } from "./types";
 
@@ -16,13 +26,10 @@ const DOG_POSES = {
   two: { x: 385, y: CANVAS_HEIGHT - 365 }
 };
 
-const INTRO_WALK_MS = 3600;
-const INTRO_FOUND_MS = 500;
 const INTRO_WALK_FPS = 11;
 const INTRO_JUMP_UP_FRAMES = 9;
 const INTRO_JUMP_FALL_FRAMES = 14;
 const INTRO_JUMP_FRAMES = INTRO_JUMP_UP_FRAMES + INTRO_JUMP_FALL_FRAMES;
-const INTRO_JUMP_MS = 920;
 const FLY_SPRITE_SIZE = 117;
 const FLY_ANIMATION_FPS = 12;
 const DOG_ONE_BIRD_WIDTH = 132;
@@ -330,13 +337,13 @@ export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElem
   const introStartX = 0;
   const introEndX = centerDogX - 85;
 
-  if (elapsedMs < INTRO_WALK_MS) {
-    const progress = elapsedMs / INTRO_WALK_MS;
+  if (elapsedMs < DOG_INTRO_WALK_MS) {
+    const progress = elapsedMs / DOG_INTRO_WALK_MS;
     drawFrame(ctx, image, frameAt("dog_walk", timeMs, INTRO_WALK_FPS), introStartX + progress * (introEndX - introStartX), groundY, DOG_SCALE);
     return;
   }
 
-  if (elapsedMs < INTRO_WALK_MS + INTRO_FOUND_MS) {
+  if (elapsedMs < DOG_INTRO_JUMP_START_MS) {
     drawFrame(ctx, image, "dog_found", introEndX, groundY - 16, DOG_SCALE);
     return;
   }
@@ -350,14 +357,14 @@ export function drawIntroDog(ctx: CanvasRenderingContext2D, image: HTMLImageElem
 }
 
 export function isIntroDogBehindGrass(elapsedMs: number) {
-  if (elapsedMs < INTRO_WALK_MS + INTRO_FOUND_MS) return false;
+  if (elapsedMs < DOG_INTRO_JUMP_START_MS) return false;
 
   return introJumpFrameIndex(elapsedMs) >= INTRO_JUMP_UP_FRAMES;
 }
 
 function introJumpFrameIndex(elapsedMs: number) {
-  const jumpElapsedMs = Math.max(elapsedMs - INTRO_WALK_MS - INTRO_FOUND_MS, 0);
-  const frameMs = INTRO_JUMP_MS / INTRO_JUMP_FRAMES;
+  const jumpElapsedMs = Math.max(elapsedMs - DOG_INTRO_JUMP_START_MS, 0);
+  const frameMs = DOG_INTRO_JUMP_MS / INTRO_JUMP_FRAMES;
   return Math.min(Math.floor(jumpElapsedMs / frameMs), INTRO_JUMP_FRAMES - 1);
 }
 

@@ -883,6 +883,12 @@ button {
     font-size: 12px;
     line-height: 1.35;
     gap: 6px;
+    text-align: center;
+    justify-items: center;
+  }
+
+  .intro-banner-actions {
+    justify-content: center;
   }
 
   .intro-banner-status,
@@ -984,6 +990,7 @@ button {
   .intro-banner {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
+    text-align: center;
   }
 }
 
