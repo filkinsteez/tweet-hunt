@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import crtAsset from "../../Assets/CRT/crt_edited.png";
+import crtAsset from "../../Assets/CRT/crt_cold.jpg";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
 import portraitBackgroundAsset from "../../Assets/Sprites/Environment/background_9x16.jpg";
 import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";

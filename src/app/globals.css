@@ -58,11 +58,11 @@ button {
 
 .game-stage {
   position: relative;
-  width: min(1120px, calc(100vw - 32px), calc((100dvh - 40px) * 4 / 3));
+  width: min(1120px, calc(100vw - 32px), calc(100dvh - 40px));
 }
 
 .game-shell-with-banner .game-stage {
-  width: min(1120px, calc(100vw - 32px), calc((100dvh - 200px) * 4 / 3));
+  width: min(1120px, calc(100vw - 32px), calc(100dvh - 200px));
 }
 
 .muted {
@@ -219,7 +219,7 @@ button {
 }
 
 .crt-cabinet {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
   background: var(--crt-art) center / 100% 100% no-repeat;
   border: 0;
   border-radius: 0;
@@ -231,10 +231,10 @@ button {
 
 .crt-screen {
   position: absolute;
-  left: 24.35%;
-  top: 16.15%;
-  width: 51.05%;
-  height: 53.2%;
+  left: 12.7%;
+  top: 17.8%;
+  width: 74.7%;
+  height: 54%;
   overflow: hidden;
   background: #02030a;
   /* Light rounding only — large % values clip the picture far inside the bezel art. */
@@ -971,7 +971,7 @@ button {
 @media (max-width: 760px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape) {
   .game-stage,
   .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc((100dvh - 18px) * 4 / 3));
+    width: min(calc(100vw - 12px), calc(100dvh - 18px));
   }
 
   .game-stage:has(.layout-portrait),
@@ -980,7 +980,7 @@ button {
   }
 
   .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc((100dvh - 78px) * 4 / 3));
+    width: min(calc(100vw - 12px), calc(100dvh - 78px));
   }
 
   .game-shell-with-banner .game-stage:has(.layout-portrait) {

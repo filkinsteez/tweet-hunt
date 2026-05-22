@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
-import crtAsset from "../../Assets/CRT/crt_edited.png";
+import crtAsset from "../../Assets/CRT/crt_cold.jpg";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
 import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
