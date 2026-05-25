@@ -74,7 +74,7 @@ function drawLimitedText(
   }
 }
 
-function drawTweetBirdSeparator(
+function drawTweetBird(
   ctx: CanvasRenderingContext2D,
   birdImage: HTMLImageElement | undefined,
   centerX: number,
@@ -207,12 +207,10 @@ function drawTweetCreditList(
   const textSize = isPortrait ? 16 : 20;
   const lineHeight = isPortrait ? 29 : 34;
   const metricsSize = isPortrait ? 12 : 15;
-  const metricsGap = isPortrait ? 12 : 18;
-  const itemGap = isPortrait ? 28 : 40;
+  const metricsGap = isPortrait ? 18 : 24;
   const birdSize = isPortrait ? 44 : 56;
-  const birdTopGap = isPortrait ? 36 : 28;
-  const birdBottomGap = isPortrait ? 8 : 12;
-  const separatorBlock = birdTopGap + birdSize + birdBottomGap;
+  const birdToTweetGap = isPortrait ? 18 : 24;
+  const groupGap = isPortrait ? 64 : 84;
   const maxWidth = content.width - paddingX * 2;
   const maxLines = isPortrait ? 4 : 3;
   const x = content.x + content.width / 2;
@@ -220,19 +218,17 @@ function drawTweetCreditList(
   const birdCenterX = content.x + content.width / 2;
   const tweetHits = hits.filter((hit) => hit.tweet);
 
-  const items = tweetHits.map((hit, index) => {
+  const items = tweetHits.map((hit) => {
     const tweet = hit.tweet!;
     const wrapped = wrapPixelText(ctx, `"${truncate(tweet.text, isPortrait ? 190 : 220)}"`, maxWidth, textSize);
     const lines = wrapped.slice(0, maxLines);
     if (wrapped.length > maxLines && lines.length > 0) lines[lines.length - 1] = `${lines[lines.length - 1]}...`;
-    const tweetBlockHeight = lines.length * lineHeight + metricsGap + metricsSize;
-    const hasSeparator = index < tweetHits.length - 1;
+    const itemHeight =
+      birdSize + birdToTweetGap + lines.length * lineHeight + metricsGap + metricsSize;
     return {
       lines,
       metrics: `${tweet.likes} likes  ${tweet.reposts} reposts  ${tweet.replies} replies`,
-      tweetBlockHeight,
-      hasSeparator,
-      height: tweetBlockHeight + (hasSeparator ? separatorBlock : itemGap)
+      height: itemHeight
     };
   });
 
@@ -240,7 +236,8 @@ function drawTweetCreditList(
   const viewportTop = content.y + clipInset;
   const viewportBottom = content.y + content.height - clipInset;
   const viewportHeight = viewportBottom - viewportTop;
-  const totalHeight = items.reduce((sum, item) => sum + item.height, 0);
+  const totalHeight =
+    items.reduce((sum, item) => sum + item.height, 0) + Math.max(items.length - 1, 0) * groupGap;
   const scrollSpeed = isPortrait ? 0.034 : 0.045;
   const scrollMax = totalHeight;
   const scrollY = scrollMax > 0 ? Math.min(timeMs * scrollSpeed, scrollMax) : 0;
@@ -254,7 +251,14 @@ function drawTweetCreditList(
   ctx.rect(content.x + clipInset, content.y + clipInset, content.width - clipInset * 2, content.height - clipInset * 2);
   ctx.clip();
 
-  for (const item of items) {
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+    const item = items[itemIndex];
+    if (itemIndex > 0) y += groupGap;
+
+    const birdCenterY = y + birdSize / 2;
+    drawTweetBird(ctx, images.bird, birdCenterX, birdCenterY, birdSize, timeMs);
+    y += birdSize + birdToTweetGap;
+
     for (let index = 0; index < item.lines.length; index += 1) {
       drawPixelText(ctx, item.lines[index], x, y + index * lineHeight, {
         size: textSize,
@@ -262,22 +266,14 @@ function drawTweetCreditList(
         align
       });
     }
-    const metricsY = y + item.lines.length * lineHeight + metricsGap;
-    drawPixelText(ctx, item.metrics, content.x + content.width / 2, metricsY, {
+    y += item.lines.length * lineHeight + metricsGap;
+
+    drawPixelText(ctx, item.metrics, content.x + content.width / 2, y, {
       size: metricsSize,
       color: "#e79a1b",
       align
     });
-
-    y += item.tweetBlockHeight;
-
-    if (item.hasSeparator) {
-      const birdCenterY = y + birdTopGap + birdSize / 2;
-      drawTweetBirdSeparator(ctx, images.bird, birdCenterX, birdCenterY, birdSize, timeMs);
-      y += separatorBlock;
-    } else {
-      y += itemGap;
-    }
+    y += metricsSize;
   }
 
   const topGradient = ctx.createLinearGradient(0, viewportTop, 0, viewportTop + scrimHeight);

@@ -741,7 +741,7 @@ export function TweetHuntApp() {
       isLoadingTweets
         ? "Loading live tweets from your linked X account..."
         : authStatus === "authorized"
-          ? `Game ${pendingMode} uses live tweets from your linked X account. Shooting a bird immediately deletes that tweet from X. Continue?`
+          ? "Shooting a bird will delete a real tweet from your account. This action cannot be undone. Continue?"
         : authStatus === "unknown"
           ? "Checking your authorization status…"
           : "Tweet Hunt needs permission to delete tweets from your X account. Authorize with X to continue.";
@@ -815,11 +815,6 @@ export function TweetHuntApp() {
             <div className="auth-modal" onClick={(event) => event.stopPropagation()}>
               <h2 id="auth-modal-title">Warning</h2>
               <p>{modalCopy}</p>
-              <p className="auth-modal-hint">
-                Want to play without consequences?
-                <br className="mobile-only-line-break" />
-                Play <strong>Fake Tweets</strong> or <strong>Clay Shooting</strong> mode.
-              </p>
               <div className="auth-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
                   Cancel

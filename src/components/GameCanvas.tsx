@@ -927,9 +927,9 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
     color: "#e79a1b",
     align: "center"
   });
-  drawPixelText(ctx, isPortraitLayout(layout) ? "Tap Resume to continue." : "Press Escape to resume.", layout.width / 2, layout.pausePanel.y + 124, {
-    size: isPortraitLayout(layout) ? 16 : 12,
-    color: "#b9ad9a",
+  drawPixelText(ctx, isPortraitLayout(layout) ? "TAP RESUME TO CONTINUE" : "PRESS ESC TO RESUME", layout.width / 2, layout.pausePanel.y + 130, {
+    size: isPortraitLayout(layout) ? 20 : 18,
+    color: "#fff9e8",
     align: "center"
   });
   drawPauseButton(ctx, layout.pauseResumeButton, "RESUME", true);

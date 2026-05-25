@@ -747,23 +747,6 @@ button {
   line-height: 1.7;
 }
 
-.auth-modal-hint {
-  color: var(--muted);
-  font-size: clamp(10px, 1.2vw, 12px);
-}
-
-.auth-modal-hint strong {
-  color: var(--accent);
-}
-
-.mobile-only-line-break {
-  display: none;
-}
-
-.game-shell-mobile-screen .mobile-only-line-break {
-  display: block;
-}
-
 .auth-modal-actions {
   display: flex;
   flex-wrap: nowrap;
