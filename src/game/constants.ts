@@ -29,12 +29,12 @@ export const GOLDEN_DUCK_SPEED_MULTIPLIER = 1.65;
 export const GOLDEN_DUCK_POINTS = 5000;
 
 export function targetsPerVolley(mode: GameMode) {
-  return mode === "A" ? 1 : 2;
+  return mode === "C" ? 2 : 1;
 }
 
 export function modeLabel(mode: GameMode) {
-  if (mode === "A") return "Game A: one tweet bird";
-  if (mode === "B") return "Game B: two tweet birds";
+  if (mode === "A") return "Game A: real tweet bird";
+  if (mode === "B") return "Game B: fake tweet bird";
   return "Game C: clay tweets, no delete";
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import titleAsset from "../../Assets/Sprites/UI/title.jpg";
+import titleAsset from "../../Assets/Sprites/UI/title_v2.png";
 import titleSelectionAsset from "../../Assets/Sprites/UI/UI_title_selection.jpg";
 import welcomePlayAsset from "../../Assets/Sprites/UI/welcome_screen_play.png";
 import welcomeTitleAsset from "../../Assets/Sprites/UI/tweet_hunt_title.png";
@@ -16,7 +16,6 @@ import { isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { selectTweetCandidates } from "@/game/mockTweets";
 import { drawFullscreenImage, drawPixelText, type Rect } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
-import { useDebugMode } from "@/hooks/useDebugMode";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 
 type Stage = "welcome" | "title" | "play" | "review";
@@ -52,13 +51,13 @@ const AUTH_ERROR_COPY: Record<NonNullable<AuthError>, string> = {
 const TITLE_TOP_SCORE = { x: 548, y: 590, size: 24 };
 const TITLE_SELECTION_SIZE = { width: 32, height: 24 };
 const TITLE_SELECTION_POSITIONS: Record<GameMode, { x: number; y: number }> = {
-  A: { x: 178, y: 414 },
-  B: { x: 178, y: 464 },
-  C: { x: 178, y: 514 }
+  A: { x: 178, y: 409 },
+  B: { x: 178, y: 461 },
+  C: { x: 178, y: 510 }
 };
 const TITLE_MODE_LABELS: Record<GameMode, string> = {
-  A: "1 TWEET",
-  B: "2 TWEETS",
+  A: "REAL TWEETS",
+  B: "FAKE TWEETS",
   C: "CLAY SHOOTING"
 };
 const TITLE_MODE_HEADINGS: Record<GameMode, string> = {
@@ -88,9 +87,9 @@ const MOBILE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; width:
   C: { x: 70, y: 664, width: 400, height: 128 }
 };
 const LANDSCAPE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; width: number; height: number }> = {
-  A: { x: 211, y: 407, width: 634, height: 44 },
-  B: { x: 211, y: 454, width: 634, height: 44 },
-  C: { x: 211, y: 501, width: 634, height: 44 }
+  A: { x: 211, y: 399, width: 634, height: 44 },
+  B: { x: 211, y: 451, width: 634, height: 44 },
+  C: { x: 211, y: 500, width: 634, height: 44 }
 };
 
 function fitImageWidth(image: HTMLImageElement | undefined, width: number) {
@@ -258,7 +257,6 @@ function drawWelcomeBird(
 
 export function TweetHuntApp() {
   const layout = useGameplayLayout();
-  const debugMode = useDebugMode();
   const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
   const [config, setConfig] = useState<HuntConfig>({ mode: "A", source: "random" });
@@ -271,7 +269,6 @@ export function TweetHuntApp() {
   const [roundTweets, setRoundTweets] = useState<TweetCandidate[]>([]);
   const [isLiveTweetRound, setIsLiveTweetRound] = useState(false);
   const [useArcadeFallback, setUseArcadeFallback] = useState(false);
-  const [isDebugRound, setIsDebugRound] = useState(false);
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
   const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
@@ -343,9 +340,9 @@ export function TweetHuntApp() {
     const mode = params.get("mode");
     if (auth === "ok") {
       void refreshAuth().then(() => {
-        if (mode === "A" || mode === "B") {
+        if (mode === "A") {
           setLastResult(null);
-          setPendingMode(mode as GameMode);
+          setPendingMode("A");
           setStage("title");
         }
       });
@@ -374,7 +371,6 @@ export function TweetHuntApp() {
     setRoundTweets([]);
     setIsLiveTweetRound(false);
     setUseArcadeFallback(mode !== "C");
-    setIsDebugRound(false);
     setLastResult(null);
     setPendingMode(null);
     if (message) setTweetLoadError(message);
@@ -394,7 +390,6 @@ export function TweetHuntApp() {
       setRoundTweets(tweets);
       setIsLiveTweetRound(mode !== "C");
       setUseArcadeFallback(false);
-      setIsDebugRound(false);
       setConfig((current) => ({ ...current, mode }));
       setLastResult(null);
       setPendingMode(null);
@@ -417,20 +412,18 @@ export function TweetHuntApp() {
     setRoundTweets([]);
     setIsLiveTweetRound(false);
     setUseArcadeFallback(false);
-    setIsDebugRound(false);
     setLastResult(null);
     setPendingMode(null);
     setStage("play");
   }
 
-  function startDebugRound(mode: GameMode) {
+  function startFakeTweetRound() {
     const tweets = selectTweetCandidates({ source: "random" }, TARGETS_PER_ROUND);
     gameAudio.stopAll();
-    setConfig((current) => ({ ...current, mode }));
+    setConfig((current) => ({ ...current, mode: "B" }));
     setRoundTweets(tweets);
     setIsLiveTweetRound(true);
     setUseArcadeFallback(false);
-    setIsDebugRound(true);
     setLastResult(null);
     setPendingMode(null);
     setAuthError(null);
@@ -445,8 +438,8 @@ export function TweetHuntApp() {
       startPracticeMode(mode);
       return;
     }
-    if (debugMode) {
-      startDebugRound(mode);
+    if (mode === "B") {
+      startFakeTweetRound();
       return;
     }
     setPendingMode(mode);
@@ -493,8 +486,8 @@ export function TweetHuntApp() {
 
   function nextRound() {
     setRoundNumber((current) => current + 1);
-    if (isDebugRound && config.mode !== "C") {
-      startDebugRound(config.mode);
+    if (config.mode === "B") {
+      startFakeTweetRound();
       return;
     }
     if (lastResult?.isLiveTweetRound && lastResult.targetLimit < TARGETS_PER_ROUND) {
@@ -546,7 +539,7 @@ export function TweetHuntApp() {
     setStage("title");
   }
 
-  const hasIntroBannerContent = debugMode || authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
+  const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
   const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
@@ -707,11 +700,6 @@ export function TweetHuntApp() {
 
     return (
       <aside className="intro-banner" aria-label="About Tweet Hunt">
-        {debugMode ? (
-          <p className="intro-banner-debug">
-            DEBUG MODE — mock tweets, no X deletion. Append <code>?debug=0</code> to disable.
-          </p>
-        ) : null}
         {authStatus === "authorized" ? (
           <p className="intro-banner-status">
             Authorized{handle ? ` as @${handle}` : ""}.
@@ -830,7 +818,7 @@ export function TweetHuntApp() {
               <p className="auth-modal-hint">
                 Want to play without consequences?
                 <br className="mobile-only-line-break" />
-                Play <strong>Clay Shooting</strong> mode.
+                Play <strong>Fake Tweets</strong> or <strong>Clay Shooting</strong> mode.
               </p>
               <div className="auth-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
@@ -864,7 +852,6 @@ export function TweetHuntApp() {
             roundNumber={roundNumber}
             tweets={roundTweets}
             isLiveTweetRound={isLiveTweetRound}
-            debugMode={isDebugRound}
             onRoundEnd={handleRoundEnd}
             onQuit={stopAudioAndShowTitleScreen}
           />

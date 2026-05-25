@@ -231,14 +231,14 @@ button {
 
 .crt-screen {
   position: absolute;
-  left: 12.7%;
-  top: 17.8%;
-  width: 74.7%;
-  height: 54%;
+  left: 12.2%;
+  top: 16.8%;
+  width: 75.6%;
+  height: 55.4%;
   overflow: hidden;
   background: #02030a;
-  /* Light rounding only — large % values clip the picture far inside the bezel art. */
-  border-radius: 4% / 4.5%;
+  /* Curve matches the CRT bezel's rounded screen corners and slight top/bottom bulge. */
+  border-radius: 9% / 11%;
   isolation: isolate;
 }
 
@@ -633,22 +633,6 @@ button {
   color: var(--danger);
 }
 
-.intro-banner-debug {
-  font-size: 12px;
-  color: var(--accent);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.intro-banner-debug code {
-  font-family: var(--tweet-font);
-  font-size: 11px;
-  color: #fff9e8;
-  background: rgba(231, 154, 27, 0.18);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
 .intro-banner-actions {
   display: flex;
   flex-wrap: wrap;
@@ -892,8 +876,7 @@ button {
   }
 
   .intro-banner-status,
-  .intro-banner-error,
-  .intro-banner-debug {
+  .intro-banner-error {
     font-size: 11px;
   }
 

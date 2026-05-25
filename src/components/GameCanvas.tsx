@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import crtAsset from "../../Assets/CRT/crt_cold.jpg";
 import backgroundAsset from "../../Assets/Sprites/Environment/background.jpg";
 import portraitBackgroundAsset from "../../Assets/Sprites/Environment/background_9x16.jpg";
-import dogTwoBirdAsset from "../../Assets/Sprites/Environment/dog_2bird.png";
 import foregroundAsset from "../../Assets/Sprites/Environment/foreground.png";
 import portraitGrassAsset from "../../Assets/Sprites/Environment/grass_9x16.png";
 import portraitGroundAsset from "../../Assets/Sprites/Environment/ground_9x16.png";
@@ -60,7 +59,6 @@ import {
   CLAY_PATHS,
   FIXED_STEP_MS,
   GAME_A_LAUNCH_PATHS,
-  GAME_B_PATHS,
   NES_HEIGHT,
   NES_WIDTH,
   applyNextMotionMicroDelta,
@@ -74,7 +72,6 @@ import {
   duckSpeedIndexForRound,
   duckZapperShapeForRound,
   flyAwayTimerForRound,
-  gameBDuckSpeedIndex,
   modeReleaseDelay,
   perfectBonusForRound,
   pointHitsZapperShape,
@@ -188,7 +185,6 @@ type Props = {
   roundNumber: number;
   tweets: TweetCandidate[];
   isLiveTweetRound: boolean;
-  debugMode?: boolean;
   onRoundEnd: (result: RoundResult) => void;
   onQuit: () => void;
 };
@@ -476,7 +472,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     fixedStepAccumulatorMs: 0,
     lastFrameAtMs: undefined,
     fixedFrameCounter: 0,
-    releaseDelayFrames: isPortraitLayout(layout) ? (mode === "A" ? 18 : 8) : modeReleaseDelay(mode),
+    releaseDelayFrames: isPortraitLayout(layout) ? (mode === "C" ? 8 : 18) : modeReleaseDelay(mode),
     pendingLaunches: 0,
     launchSlotIndex: 0,
     lastPathId: -1,
@@ -486,7 +482,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     dogBarkWindowStarted: false,
     dogBarkCounterFrames: DOG_BARK_INITIAL_FRAMES,
     scoreReveals: [],
-    duckCallStatus: mode === "C" || !isLiveTweetRound ? "disabled" : "ready",
+    duckCallStatus: mode === "A" && isLiveTweetRound ? "ready" : "disabled",
     duckCallTriggeredAtMs: undefined,
     goldenSpawnAtMs: undefined,
     goldenTargetId: undefined,
@@ -498,7 +494,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
 }
 
 function getRemainingArmedTweetIds(state: RuntimeState, tweets: TweetCandidate[]): string[] {
-  if (state.mode === "C" || !state.isLiveTweetRound) return [];
+  if (state.mode !== "A" || !state.isLiveTweetRound) return [];
   const consumedIds = new Set<string>();
   for (const hit of state.hits) {
     if (hit.tweet) consumedIds.add(hit.tweet.id);
@@ -524,7 +520,7 @@ function canUseDuckCall(state: RuntimeState | null): boolean {
   if (!state) return false;
   if (state.phase !== "active") return false;
   if (state.duckCallStatus !== "ready") return false;
-  if (state.mode === "C") return false;
+  if (state.mode !== "A") return false;
   if (!state.isLiveTweetRound) return false;
   return true;
 }
@@ -1078,23 +1074,6 @@ function launchTarget(state: RuntimeState, target: TargetEntity, now: number) {
   target.motionPatternIndex = 0;
   target.fliesBehindTree = (rngNext(state.rng) & 0x01) === 0;
 
-  if (state.mode === "B") {
-    const pathId = rngNext(state.rng) & 0x0f;
-    const pathData = GAME_B_PATHS[pathId];
-    target.pathId = pathId;
-    target.pathData = [...pathData];
-    target.pathIndex = 1;
-    target.segmentTimer = 0;
-    target.nesX = pathData[0];
-    target.nesY = 0xa8;
-    target.speedIndex = gameBDuckSpeedIndex(state.roundNumber, target.color);
-    setMotionCode(target, 0);
-    syncCanvasPosition(target);
-    loadNextGameBSegment(target);
-    playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
-    return;
-  }
-
   const pathKeys = Object.keys(GAME_A_LAUNCH_PATHS).map(Number);
   let pathId = pathKeys[rngNext(state.rng) % pathKeys.length];
   if (pathKeys.length > 1) {
@@ -1159,23 +1138,6 @@ function launchPortraitTarget(state: RuntimeState, target: TargetEntity, now: nu
   target.flight = "diag";
   target.speedIndex = duckSpeedIndexForRound(Math.max(1, state.roundNumber - 1));
   playTargetSound(target, "duckFlying", "launchSoundPlayed", 0.68);
-}
-
-function loadNextGameBSegment(target: TargetEntity) {
-  const pathData = target.pathData;
-  if (!pathData || target.pathIndex === undefined) return;
-
-  const duration = pathData[target.pathIndex];
-  const motionCode = pathData[target.pathIndex + 1] ?? 0;
-  target.pathIndex += 2;
-
-  if (duration === 0xff) {
-    target.mechanicsState = "clear";
-    return;
-  }
-
-  target.segmentTimer = duration;
-  setMotionCode(target, motionCode);
 }
 
 function startNextVolley(state: RuntimeState, tweets: TweetCandidate[], now: number) {
@@ -1340,8 +1302,7 @@ function advanceFixedStep(state: RuntimeState, now: number) {
       updateClayTarget(state, target);
     } else {
       if (state.fixedFrameCounter % DUCK_FLAP_INTERVAL_FRAMES === 0) gameAudio.play("duckFlying", 0.36);
-      if (state.mode === "B") updateGameBDuck(state, target);
-      else updateGameADuck(state, target);
+      updateGameADuck(state, target);
     }
   }
 
@@ -1371,12 +1332,12 @@ function advanceLaunchQueue(state: RuntimeState, now: number) {
 
 function releaseDelayForLayout(state: RuntimeState) {
   if (!isPortraitLayout(state.layout)) return modeReleaseDelay(state.mode);
-  return state.mode === "A" ? 18 : 8;
+  return state.mode === "C" ? 8 : 18;
 }
 
 function nextLaunchGapForLayout(state: RuntimeState) {
   if (!isPortraitLayout(state.layout)) return (rngNext(state.rng) & 0x3f) + 1;
-  return state.mode === "B" ? (rngNext(state.rng) & 0x0f) + 8 : (rngNext(state.rng) & 0x1f) + 12;
+  return (rngNext(state.rng) & 0x1f) + 12;
 }
 
 function updateGoldenDuck(state: RuntimeState, target: TargetEntity) {
@@ -1459,32 +1420,6 @@ function updateGameADuck(state: RuntimeState, target: TargetEntity) {
 
   redirectAtBoundary(state, target);
   moveTargetBySpeedCycle(target);
-}
-
-function updateGameBDuck(state: RuntimeState, target: TargetEntity) {
-  if (target.isGolden) {
-    updateGoldenDuck(state, target);
-    return;
-  }
-  if (isPortraitLayout(state.layout)) {
-    updatePortraitDuck(state, target);
-    return;
-  }
-
-  if (target.flyAwayFlag) {
-    moveTargetBySpeedCycle(target);
-    if ((target.nesY ?? 0) < -16) markEscaped(state, target, performance.now());
-    return;
-  }
-
-  if ((target.segmentTimer ?? 0) <= 0) loadNextGameBSegment(target);
-  if (target.mechanicsState === "clear") {
-    markEscaped(state, target, performance.now());
-    return;
-  }
-
-  moveTargetBySpeedCycle(target);
-  target.segmentTimer = Math.max((target.segmentTimer ?? 0) - 1, 0);
 }
 
 function updatePortraitDuck(state: RuntimeState, target: TargetEntity) {
@@ -1648,7 +1583,7 @@ function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, 
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugMode = false, onRoundEnd, onQuit }: Props) {
+export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
@@ -1665,7 +1600,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const portraitGroundImageRef = useRef<HTMLImageElement | null>(null);
   const portraitTreeImageRef = useRef<HTMLImageElement | null>(null);
   const dogOneBirdImageRef = useRef<HTMLImageElement | null>(null);
-  const dogTwoBirdImageRef = useRef<HTMLImageElement | null>(null);
   const treeImageRef = useRef<HTMLImageElement | null>(null);
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
   const foregroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -1679,11 +1613,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   const pauseStartedAtRef = useRef<number | null>(null);
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
-  const debugModeRef = useRef(debugMode);
 
-  useEffect(() => {
-    debugModeRef.current = debugMode;
-  }, [debugMode]);
   const [assetReady, setAssetReady] = useState(false);
   const [fontReady, setFontReady] = useState(false);
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
@@ -2018,19 +1948,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
   }, []);
 
   useEffect(() => {
-    const dogTwoBirdImage = new Image();
-    dogTwoBirdImage.src = dogTwoBirdAsset.src;
-    dogTwoBirdImage.onload = () => {
-      dogTwoBirdImageRef.current = dogTwoBirdImage;
-    };
-
-    return () => {
-      dogTwoBirdImage.onload = null;
-      dogTwoBirdImageRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
     const midgroundImage = new Image();
     midgroundImage.src = midgroundAsset.src;
     midgroundImage.onload = () => {
@@ -2235,7 +2152,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
         dogRiseOffset,
         shouldShowRetrieveDog && state.retrieveDogX !== undefined ? state.retrieveDogX - dogOffsetX : undefined,
         dogOneBirdImageRef.current,
-        mode === "B" ? dogTwoBirdImageRef.current : null
+        null
       );
       ctx.restore();
     }
@@ -2377,27 +2294,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       if (phase === "complete") state.flockClearedFlashStartedAtMs = performance.now();
     };
 
-    if (debugModeRef.current) {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      const deleted = flushIds.length;
-      const scoreFromFlush = deleted * flushPointsPerDelete;
-      state.score += scoreFromFlush;
-      state.goldenFlushProgress = {
-        ...state.goldenFlushProgress,
-        phase: "running",
-        deleted,
-        failed: 0
-      };
-      state.goldenSummary = {
-        tweetsDeleted: deleted,
-        failed: 0,
-        scoreFromFlush,
-        goldenDuckPoints: goldenPoints
-      };
-      finalize("complete");
-      return;
-    }
-
     const nonce = generateGoldenFlushNonce();
     try {
       for await (const event of streamGoldenFlush({ mode: state.mode, nonce, tweetIds: flushIds })) {
@@ -2477,7 +2373,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
       hitOrder: state.hits.length + 1,
       hitAtMs: now,
       mode: state.mode,
-      deleteStatus: hit.tweet && state.mode !== "C" ? "pending" : undefined,
+      deleteStatus: hit.tweet && state.mode === "A" ? "pending" : undefined,
       isGolden: hit.isGolden
     };
     state.hits.push(record);
@@ -2499,7 +2395,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, debugM
     }
 
     if (hit.tweet) {
-      if (debugModeRef.current) {
+      if (state.mode === "B") {
         record.deleteStatus = "deleted";
       } else {
         void deleteTweetOnHit(hit.tweet.id, state.mode).then((deleted) => {

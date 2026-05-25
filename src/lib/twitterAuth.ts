@@ -69,8 +69,8 @@ export function authCookieOptions(maxAgeSeconds: number) {
   };
 }
 
-export function isReturnMode(mode: string | null | undefined): mode is "A" | "B" {
-  return mode === "A" || mode === "B";
+export function isReturnMode(mode: string | null | undefined): mode is "A" {
+  return mode === "A";
 }
 
 export function buildAuthorizeUrl(env: OAuthEnv, state: string, codeVerifier: string): URL {
