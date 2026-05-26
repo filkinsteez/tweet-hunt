@@ -663,27 +663,9 @@ button {
   color: #fff;
 }
 
-.intro-banner-status {
-  font-size: 12px;
-  color: rgba(246, 240, 223, 0.6);
-}
-
 .intro-banner-error {
   font-size: 12px;
   color: var(--danger);
-}
-
-.intro-banner-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.unlink-button {
-  border-width: 2px;
-  font-size: 11px;
-  padding: 8px 12px;
 }
 
 .arcade-button:disabled {
@@ -922,20 +904,8 @@ button {
     justify-items: center;
   }
 
-  .intro-banner-actions {
-    justify-content: center;
-  }
-
-  .intro-banner-status,
   .intro-banner-error {
     font-size: 11px;
-  }
-
-  .unlink-button {
-    min-width: 0;
-    min-height: 38px;
-    padding: 6px 10px;
-    font-size: 9px;
   }
 
   .crt-cabinet {

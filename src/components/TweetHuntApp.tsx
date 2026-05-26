@@ -76,9 +76,9 @@ const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
 const MOBILE_TITLE_HEADING_SIZE = 23;
 const MOBILE_TITLE_LABEL_SIZE = 31;
 const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
-const TITLE_UNLINK_LABEL = "unlink account";
-const TITLE_UNLINK_RECT = { x: 514, y: 624, width: 240, height: 34 };
-const MOBILE_TITLE_UNLINK_RECT = { x: 132, y: 890, width: 276, height: 46 };
+const TITLE_UNLINK_LABEL = "UNLINK ACCOUNT";
+const TITLE_UNLINK_RECT = { x: 336, y: 616, width: 360, height: 52 };
+const MOBILE_TITLE_UNLINK_RECT = { x: 102, y: 884, width: 336, height: 56 };
 const WELCOME_BIRD_COLUMNS = 4;
 const WELCOME_BIRD_ROWS = 3;
 const WELCOME_BIRD_SIZE = 138;
@@ -679,9 +679,9 @@ export function TweetHuntApp() {
           align: "center"
         });
         if (authStatus === "authorized") {
-          drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, MOBILE_TITLE_UNLINK_RECT.y + 28, {
-            size: 12,
-            color: "#70e27b",
+          drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, MOBILE_TITLE_UNLINK_RECT.y + 36, {
+            size: 16,
+            color: "#e79a1b",
             align: "center"
           });
         }
@@ -707,9 +707,9 @@ export function TweetHuntApp() {
         color: "#fff9e8"
       });
       if (authStatus === "authorized") {
-        drawPixelText(ctx, TITLE_UNLINK_LABEL, TITLE_UNLINK_RECT.x + TITLE_UNLINK_RECT.width / 2, TITLE_UNLINK_RECT.y + 24, {
-          size: 12,
-          color: "#70e27b",
+        drawPixelText(ctx, TITLE_UNLINK_LABEL, TITLE_UNLINK_RECT.x + TITLE_UNLINK_RECT.width / 2, TITLE_UNLINK_RECT.y + 34, {
+          size: 18,
+          color: "#e79a1b",
           align: "center"
         });
       }
@@ -733,11 +733,6 @@ export function TweetHuntApp() {
 
     return (
       <aside className="intro-banner" aria-label="About Tweet Hunt">
-        {authStatus === "authorized" ? (
-          <p className="intro-banner-status">
-            Authorized{handle ? ` as @${handle}` : ""}.
-          </p>
-        ) : null}
         {authError ? (
           <p className="intro-banner-error">
             {AUTH_ERROR_COPY[authError]}
