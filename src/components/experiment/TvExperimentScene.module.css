@@ -1,0 +1,76 @@
+.shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #f7eddd;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(246, 174, 82, 0.18), transparent 32%),
+    linear-gradient(145deg, #050403 0%, #130f0b 52%, #030303 100%);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.overlay {
+  position: absolute;
+  left: clamp(18px, 4vw, 52px);
+  bottom: clamp(18px, 4vw, 48px);
+  width: min(430px, calc(100vw - 36px));
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 226, 181, 0.17);
+  border-radius: 18px;
+  background: rgba(8, 7, 6, 0.56);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
+.overlay h1 {
+  margin: 8px 0 8px;
+  font-family: var(--font-inter, Inter, system-ui, sans-serif);
+  font-size: clamp(1.55rem, 3.6vw, 3.3rem);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+.overlay p {
+  margin: 0;
+  color: rgba(247, 237, 221, 0.78);
+  font-family: var(--font-inter, Inter, system-ui, sans-serif);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.eyebrow {
+  color: #f0a928;
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hiddenGameFeed {
+  position: fixed;
+  left: -200vw;
+  top: 0;
+  width: 480px;
+  height: 480px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .overlay {
+    top: 16px;
+    bottom: auto;
+  }
+}

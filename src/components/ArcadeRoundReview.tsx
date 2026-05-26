@@ -6,7 +6,7 @@ import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
 import { truncate } from "@/game/format";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
-import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, wrapPixelText, type Rect } from "@/game/uiDraw";
+import { drawArcadeButton, drawArcadeModalPanel, drawArcadeModalTitle, drawPixelPanel, drawPixelText, wrapPixelText, type Rect } from "@/game/uiDraw";
 import type { RoundResult } from "@/game/types";
 
 type Props = {
@@ -38,21 +38,6 @@ function rectStyle(rect: Rect, layout: GameplayLayoutProfile): CSSProperties {
     width: `${(rect.width / layout.width) * 100}%`,
     height: `${(rect.height / layout.height) * 100}%`
   };
-}
-
-function drawButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, primary = false, textSize = BUTTON_TEXT_SIZE_PORTRAIT) {
-  drawPixelPanel(ctx, rect, {
-    fill: primary ? "#e79a1b" : "#2a2a34",
-    stroke: "#08080c",
-    lineWidth: 5
-  });
-  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
-    size: textSize,
-    color: primary ? "#09090d" : "#fff9e8",
-    align: "center",
-    baseline: "middle",
-    shadow: false
-  });
 }
 
 function drawLimitedText(
@@ -317,12 +302,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = "#02030a";
       ctx.fillRect(0, 0, layout.width, layout.height);
-      drawPixelBeveledPanel(ctx, panel, {
-        fill: "rgba(5, 7, 16, 0.96)",
-        stroke: "#e79a1b",
-        lineWidth: 5,
-        bevel: 20
-      });
+      drawArcadeModalPanel(ctx, panel, { bevel: 20 });
 
       const title = isClayRound
         ? "CLAY SHOOTING"
@@ -333,11 +313,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
             : "NO TWEETS DELETED";
 
       if (hasGoldenFlush) {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, {
-          size: isPortrait ? 20 : 24,
-          color: "#f5c542",
-          align: "center"
-        });
+        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, isPortrait ? 20 : 24);
         drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${nonGoldenHitCount}`, layout.width / 2, isPortrait ? 64 : 104, {
           size: isPortrait ? 15 : 18,
           color: "#70e27b",
@@ -345,11 +321,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         });
         drawGoldenSummaryCard(ctx, result, content, isPortrait, images, localTimeMs);
       } else if (hasTweetReview) {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, {
-          size: isPortrait ? 20 : 24,
-          color: "#e79a1b",
-          align: "center"
-        });
+        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, isPortrait ? 20 : 24);
         drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 64 : 104, {
           size: isPortrait ? 15 : 18,
           color: "#70e27b",
@@ -362,11 +334,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         });
         drawTweetCreditList(ctx, destructiveHits, content, localTimeMs, isPortrait, images);
       } else {
-        drawPixelText(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, {
-          size: isPortrait ? 19 : 28,
-          color: "#e79a1b",
-          align: "center"
-        });
+        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, isPortrait ? 19 : 28);
         drawPixelText(ctx, title, layout.width / 2, isPortrait ? 270 : SUMMARY_MODE_Y, {
           size: isPortrait ? 14 : 18,
           color: "#fff9e8",
@@ -407,8 +375,8 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       }
 
       const buttonTextSize = isPortrait ? BUTTON_TEXT_SIZE_PORTRAIT : BUTTON_TEXT_SIZE_DESKTOP;
-      drawButton(ctx, quitButton, "QUIT", false, buttonTextSize);
-      drawButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", true, buttonTextSize);
+      drawArcadeButton(ctx, quitButton, "QUIT", { variant: "secondary", textSize: buttonTextSize });
+      drawArcadeButton(ctx, nextRoundButton, isPortrait ? "NEXT" : "NEXT ROUND", { variant: "primary", textSize: buttonTextSize });
     },
     [
       content,

@@ -15,6 +15,11 @@ type PanelOptions = {
   bevel?: number;
 };
 
+type ArcadeButtonOptions = {
+  variant?: "primary" | "secondary";
+  textSize?: number;
+};
+
 export type Rect = {
   x: number;
   y: number;
@@ -23,6 +28,13 @@ export type Rect = {
 };
 
 const PIXEL_FONT = "'Press Start 2P', monospace";
+const ARCADE_MODAL_FILL = "rgba(5, 7, 16, 0.96)";
+const ARCADE_MODAL_STROKE = "#e79a1b";
+const ARCADE_MODAL_TEXT = "#fff9e8";
+const ARCADE_MODAL_PRIMARY_TEXT = "#09090d";
+const ARCADE_MODAL_SECONDARY_FILL = "#2a2a34";
+const ARCADE_MODAL_STROKE_DARK = "#08080c";
+const ARCADE_MODAL_SCRIM = "rgba(2, 4, 10, 0.78)";
 
 export function drawFullscreenImage(ctx: CanvasRenderingContext2D, image: CanvasImageSource | null | undefined) {
   const width = ctx.canvas.width || CANVAS_WIDTH;
@@ -97,6 +109,47 @@ export function drawPixelBeveledPanel(ctx: CanvasRenderingContext2D, rect: Rect,
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+export function drawArcadeModalScrim(ctx: CanvasRenderingContext2D, alphaFill = ARCADE_MODAL_SCRIM) {
+  ctx.save();
+  ctx.fillStyle = alphaFill;
+  ctx.fillRect(0, 0, ctx.canvas.width || CANVAS_WIDTH, ctx.canvas.height || CANVAS_HEIGHT);
+  ctx.restore();
+}
+
+export function drawArcadeModalPanel(ctx: CanvasRenderingContext2D, rect: Rect, options: PanelOptions = {}) {
+  drawPixelBeveledPanel(ctx, rect, {
+    fill: options.fill ?? ARCADE_MODAL_FILL,
+    stroke: options.stroke ?? ARCADE_MODAL_STROKE,
+    lineWidth: options.lineWidth ?? 5,
+    bevel: options.bevel ?? 18
+  });
+}
+
+export function drawArcadeModalTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 30) {
+  drawPixelText(ctx, text, x, y, {
+    size,
+    color: ARCADE_MODAL_STROKE,
+    align: "center"
+  });
+}
+
+export function drawArcadeButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, options: ArcadeButtonOptions = {}) {
+  const variant = options.variant ?? "secondary";
+  const isPrimary = variant === "primary";
+  drawPixelPanel(ctx, rect, {
+    fill: isPrimary ? ARCADE_MODAL_STROKE : ARCADE_MODAL_SECONDARY_FILL,
+    stroke: ARCADE_MODAL_STROKE_DARK,
+    lineWidth: 5
+  });
+  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
+    size: options.textSize ?? 16,
+    color: isPrimary ? ARCADE_MODAL_PRIMARY_TEXT : ARCADE_MODAL_TEXT,
+    align: "center",
+    baseline: "middle",
+    shadow: false
+  });
 }
 
 export function drawWrappedPixelText(

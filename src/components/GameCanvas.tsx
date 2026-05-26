@@ -13,6 +13,7 @@ import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/
 import birdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/bird_shot.png";
 import goldenBirdShotAsset from "../../Assets/Sprites/Bird/Bird Misc/golden_bird_shot.png";
 import clayBackgroundAsset from "../../Assets/Sprites/Clay/clay_bg.jpg";
+import clayPortraitBackgroundAsset from "../../Assets/Sprites/Clay/clay_bg_9x16.jpg";
 import clayFilledPigeonAsset from "../../Assets/Sprites/Clay/clay_filled_pigeon.jpg";
 import clayHitAsset from "../../Assets/Sprites/Clay/clay_hit_counter.jpg";
 import clayHitCounterFilledAsset from "../../Assets/Sprites/Clay/clay_hit_counter_filled.jpg";
@@ -104,7 +105,18 @@ import {
 } from "@/game/draw";
 import { totalTweetEngagement } from "@/game/engagement";
 import { formatDate, truncate } from "@/game/format";
-import { drawPixelBeveledPanel, drawPixelPanel, drawPixelText, drawWrappedPixelText, pointInRect, wrapPixelText, type Rect } from "@/game/uiDraw";
+import {
+  drawArcadeButton,
+  drawArcadeModalPanel,
+  drawArcadeModalScrim,
+  drawArcadeModalTitle,
+  drawPixelBeveledPanel,
+  drawPixelText,
+  drawWrappedPixelText,
+  pointInRect,
+  wrapPixelText,
+  type Rect
+} from "@/game/uiDraw";
 import type {
   BirdColor,
   DuckCallStatus,
@@ -187,6 +199,8 @@ type Props = {
   isLiveTweetRound: boolean;
   onRoundEnd: (result: RoundResult) => void;
   onQuit: () => void;
+  presentation?: "crt" | "source";
+  onSourceCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
 };
 
 const PIXEL_FONT = "'Press Start 2P', monospace";
@@ -239,8 +253,6 @@ const DOG_INTRO_FLUSH_END_MS = DOG_INTRO_FLUSH_START_MS + DOG_INTRO_JUMP_MS;
 const DUCK_FLAP_INTERVAL_FRAMES = 8;
 const PORTRAIT_FRAME_INTERVAL_MS = 1000 / 30;
 
-const BUTTON_TEXT_SIZE = 16;
-
 function introDurationForMode(mode: GameMode) {
   return mode === "C" ? CLAY_SHOOTING_INTRO_DURATION_MS : ROUND_INTRO_DURATION_MS;
 }
@@ -252,6 +264,11 @@ function duckGroundSoundY(layout: GameplayLayoutProfile) {
 
 function uiScaleForLayout(layout: GameplayLayoutProfile) {
   return isPortraitLayout(layout) ? PORTRAIT_UI_SCALE : UI_SCALE;
+}
+
+function clayRenderScaleForLayout(layout: GameplayLayoutProfile) {
+  if (!isPortraitLayout(layout)) return 1;
+  return (layout.width / CANVAS_WIDTH) * layout.tuning.targetScale;
 }
 
 function generateGoldenFlushNonce() {
@@ -664,8 +681,8 @@ function drawScoreNumber(ctx: CanvasRenderingContext2D, atlas: HTMLImageElement,
   const scale = uiScaleForLayout(layout);
   const digits = Math.max(0, score).toString().padStart(6, "0").slice(-6);
   const glyphWidth = 8 * scale;
-  const x = isPortraitLayout(layout) ? hud.score.x + 13 : hud.score.x + 4 * scale - 4;
-  const y = isPortraitLayout(layout) ? hud.score.y + 7 : hud.score.y + scale + 8;
+  const x = isPortraitLayout(layout) ? hud.score.x + 10 : hud.score.x + 4 * scale - 4;
+  const y = isPortraitLayout(layout) ? hud.score.y + 10 : hud.score.y + scale + 8;
 
   ctx.fillStyle = "#050508";
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(glyphWidth * 6), Math.round(8 * scale));
@@ -895,49 +912,47 @@ function drawMicroRevealPanel(ctx: CanvasRenderingContext2D, reveal: MicroReveal
   });
 }
 
-function drawPauseButton(ctx: CanvasRenderingContext2D, rect: Rect, label: string, primary = false) {
-  drawPixelPanel(ctx, rect, {
-    fill: primary ? "#e79a1b" : "#1c1c24",
-    stroke: "#08080c",
-    lineWidth: 4
-  });
-  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
-    size: BUTTON_TEXT_SIZE,
-    color: primary ? "#09090d" : "#fff9e8",
-    align: "center",
-    baseline: "middle",
-    shadow: false
-  });
-}
-
 function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile = LANDSCAPE_LAYOUT) {
-  ctx.save();
-  ctx.fillStyle = "rgba(2, 3, 8, 0.62)";
-  ctx.fillRect(0, 0, layout.width, layout.height);
-  ctx.restore();
+  const isPortrait = isPortraitLayout(layout);
 
-  drawPixelBeveledPanel(ctx, layout.pausePanel, {
-    fill: "rgba(5, 7, 16, 0.96)",
-    stroke: "#e79a1b",
-    lineWidth: 5,
-    bevel: 18
-  });
-  drawPixelText(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 52, {
-    size: 30,
-    color: "#e79a1b",
-    align: "center"
-  });
-  drawPixelText(ctx, isPortraitLayout(layout) ? "TAP RESUME TO CONTINUE" : "PRESS ESC TO RESUME", layout.width / 2, layout.pausePanel.y + 130, {
-    size: isPortraitLayout(layout) ? 20 : 18,
-    color: "#fff9e8",
-    align: "center"
-  });
-  drawPauseButton(ctx, layout.pauseResumeButton, "RESUME", true);
-  drawPauseButton(ctx, layout.pauseQuitButton, "QUIT");
+  drawArcadeModalScrim(ctx);
+  drawArcadeModalPanel(ctx, layout.pausePanel);
+  drawArcadeModalTitle(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 52, 30);
+  if (isPortrait) {
+    drawPixelText(ctx, "TAP RESUME", layout.width / 2, layout.pausePanel.y + 116, {
+      size: 18,
+      color: "#fff9e8",
+      align: "center"
+    });
+    drawPixelText(ctx, "TO CONTINUE", layout.width / 2, layout.pausePanel.y + 152, {
+      size: 18,
+      color: "#fff9e8",
+      align: "center"
+    });
+  } else {
+    drawPixelText(ctx, "PRESS ESC TO RESUME", layout.width / 2, layout.pausePanel.y + 130, {
+      size: 18,
+      color: "#fff9e8",
+      align: "center"
+    });
+  }
+  drawArcadeButton(ctx, layout.pauseQuitButton, "QUIT", { variant: "secondary", textSize: 16 });
+  drawArcadeButton(ctx, layout.pauseResumeButton, "RESUME", { variant: "primary", textSize: 16 });
 }
 
-function drawPortraitEnvironment(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, isClayMode: boolean, backgroundImage?: HTMLImageElement | null) {
+function drawPortraitEnvironment(
+  ctx: CanvasRenderingContext2D,
+  layout: GameplayLayoutProfile,
+  isClayMode: boolean,
+  backgroundImage?: HTMLImageElement | null,
+  clayBackgroundImage?: HTMLImageElement | null
+) {
   ctx.imageSmoothingEnabled = false;
+  if (isClayMode && clayBackgroundImage) {
+    ctx.drawImage(clayBackgroundImage, 0, 0, layout.width, layout.height);
+    return;
+  }
+
   if (!isClayMode && backgroundImage) {
     ctx.drawImage(backgroundImage, 0, 0, layout.width, layout.height);
     return;
@@ -1476,6 +1491,7 @@ function updatePortraitDuck(state: RuntimeState, target: TargetEntity) {
 function updateClayTarget(state: RuntimeState, target: TargetEntity) {
   const dt = FIXED_STEP_MS / 1000;
   const layout = state.layout;
+  const isPortrait = isPortraitLayout(layout);
   target.vy += layout.tuning.clayGravity * dt;
   target.x += target.vx * dt;
   target.y += target.vy * dt;
@@ -1483,12 +1499,15 @@ function updateClayTarget(state: RuntimeState, target: TargetEntity) {
   target.nesY = canvasToNesYForLayout(target.y, layout);
 
   const ageMs = performance.now() - target.createdAtMs;
-  const imageIndex = Math.min(Math.floor(ageMs / 260), 11);
+  const imageIndex = Math.min(Math.floor(ageMs / (isPortrait ? 360 : 260)), isPortrait ? 9 : 11);
   target.clayImageIndex = imageIndex;
   target.distanceClass = Math.min(Math.floor(imageIndex / 2), 7);
   target.zapperShape = clayZapperShape(state.roundNumber, imageIndex);
 
-  if (target.x < -90 || target.x > layout.width + 90 || target.y > layout.height - 80 || target.y < -110) {
+  const horizontalEscapeMargin = isPortrait ? 140 : 90;
+  const topEscapeY = isPortrait ? -150 : -110;
+  const bottomEscapeY = isPortrait ? layout.height + 72 : layout.height - 80;
+  if (target.x < -horizontalEscapeMargin || target.x > layout.width + horizontalEscapeMargin || target.y > bottomEscapeY || target.y < topEscapeY) {
     markEscaped(state, target, performance.now());
     stopClayFlyingToneIfNoActiveClays(state);
   }
@@ -1583,7 +1602,7 @@ function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, 
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit }: Props) {
+export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit, presentation = "crt", onSourceCanvasReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
@@ -1604,6 +1623,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const midgroundImageRef = useRef<HTMLImageElement | null>(null);
   const foregroundImageRef = useRef<HTMLImageElement | null>(null);
   const clayBackgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const clayPortraitBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const stateRef = useRef<RuntimeState | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastRenderedFrameAtRef = useRef(0);
@@ -1621,13 +1641,14 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const [paused, setPaused] = useState(false);
   const layout = useGameplayLayout();
+  const useCrtPresentation = presentation === "crt";
 
   useEffect(() => {
     mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
   }, [layout.height, layout.width]);
 
   useEffect(() => {
-    if (isPortraitLayout(layout)) {
+    if (!useCrtPresentation || isPortraitLayout(layout)) {
       crtRendererRef.current?.dispose();
       crtRendererRef.current = null;
       setCrtUnavailable(false);
@@ -1650,7 +1671,13 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       setCrtUnavailable(true);
       return undefined;
     }
-  }, [layout]);
+  }, [layout, useCrtPresentation]);
+
+  useEffect(() => {
+    if (!onSourceCanvasReady) return undefined;
+    onSourceCanvasReady(canvasRef.current);
+    return () => onSourceCanvasReady(null);
+  }, [onSourceCanvasReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1935,6 +1962,19 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   }, []);
 
   useEffect(() => {
+    const clayPortraitBackgroundImage = new Image();
+    clayPortraitBackgroundImage.src = clayPortraitBackgroundAsset.src;
+    clayPortraitBackgroundImage.onload = () => {
+      clayPortraitBackgroundImageRef.current = clayPortraitBackgroundImage;
+    };
+
+    return () => {
+      clayPortraitBackgroundImage.onload = null;
+      clayPortraitBackgroundImageRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     const dogOneBirdImage = new Image();
     dogOneBirdImage.src = dogOneBirdAsset.src;
     dogOneBirdImage.onload = () => {
@@ -2019,8 +2059,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     const isClayMode = state.mode === "C";
     const isPortrait = isPortraitLayout(state.layout);
 
+    const hasClayPortraitBackground = isClayMode && Boolean(clayPortraitBackgroundImageRef.current);
+
     if (isPortrait) {
-      drawPortraitEnvironment(ctx, state.layout, isClayMode, portraitBackgroundImageRef.current);
+      drawPortraitEnvironment(ctx, state.layout, isClayMode, portraitBackgroundImageRef.current, clayPortraitBackgroundImageRef.current);
     } else if (isClayMode) {
       drawClayEnvironment(ctx, clayBackgroundImageRef.current);
     } else {
@@ -2133,7 +2175,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       if (target.status !== "escaped" && (isClayMode || !target.fliesBehindTree)) {
         const frames = target.isGolden ? goldenFlyFramesRef.current : flyFramesRef.current;
         const shotImage = target.isGolden ? goldenBirdShotImageRef.current : birdShotImageRef.current;
-        drawTarget(ctx, image, target, timeMs, frames, shotImage, clayTargetAtlasRef.current);
+        drawTarget(ctx, image, target, timeMs, frames, shotImage, clayTargetAtlasRef.current, clayRenderScaleForLayout(state.layout));
       }
     }
 
@@ -2170,7 +2212,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     if (!isClayMode && !isPortrait) {
       drawMidground(ctx, midgroundImageRef.current);
       drawForeground(ctx, foregroundImageRef.current);
-    } else if (isPortrait) {
+    } else if (isPortrait && !hasClayPortraitBackground) {
       drawPortraitForeground(
         ctx,
         state.layout,
@@ -2200,7 +2242,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       drawPauseOverlay(ctx, state.layout);
     }
     if (!isPortrait && state.phase !== "ended") drawCrosshair(ctx, mouseRef.current.x, mouseRef.current.y);
-    if (!isPortrait) crtRendererRef.current?.render(canvas, timeMs);
+    if (useCrtPresentation && !isPortrait) crtRendererRef.current?.render(canvas, timeMs);
 
     if (dogReturnedBehindGrass) {
       setMicroReveal(null);
@@ -2459,7 +2501,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
 
   return (
     <div
-      className={`canvas-wrap crt-cabinet play-crt ${layout.className}${paused ? " play-paused" : ""}${crtUnavailable || isPortraitLayout(layout) ? " crt-fallback" : ""}`}
+      className={`canvas-wrap crt-cabinet play-crt ${layout.className}${paused ? " play-paused" : ""}${!useCrtPresentation || crtUnavailable || isPortraitLayout(layout) ? " crt-fallback" : ""}`}
       style={crtStyle}
       aria-label={`${modeLabel(mode)} playfield`}
     >

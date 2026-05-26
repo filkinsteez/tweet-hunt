@@ -10,6 +10,17 @@
   --sky: #63c8ff;
   --grass: #2bb44a;
   --stroke: #08080c;
+  --modal-scrim: rgba(2, 4, 10, 0.78);
+  --modal-panel: rgba(5, 7, 16, 0.96);
+  --modal-panel-solid: #050508;
+  --modal-panel-secondary: #2a2a34;
+  --modal-text: #fff9e8;
+  --modal-primary-text: #09090d;
+  --modal-border: var(--accent);
+  --modal-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  --modal-title-size: clamp(18px, 3.6vw, 28px);
+  --modal-body-size: clamp(11px, 1.5vw, 14px);
+  --modal-action-gap: 16px;
   --tweet-font: "Press Start 2P", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --ui-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -148,6 +159,20 @@ button {
   outline: none;
 }
 
+.title-unlink-button {
+  position: absolute;
+  z-index: 6;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+}
+
+.title-unlink-button:focus-visible {
+  outline: 2px solid var(--good);
+  outline-offset: 2px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.35fr 0.65fr;
@@ -183,6 +208,7 @@ button {
   align-items: center;
 }
 
+/* Legacy DOM review controls. The active game flow uses ArcadeRoundReview and arcade-button/canvas helpers. */
 .primary,
 .secondary,
 .danger,
@@ -227,6 +253,19 @@ button {
 
 .layout-portrait {
   aspect-ratio: 9 / 16;
+}
+
+.crt-cabinet.layout-portrait {
+  background: #02030a;
+  border: 3px solid var(--stroke);
+  border-radius: 10px;
+}
+
+.crt-cabinet.layout-portrait .crt-screen {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 7px;
 }
 
 .crt-screen {
@@ -372,6 +411,7 @@ button {
   border: 0;
 }
 
+/* Legacy DOM review screen. Keep visually quarantined from the active arcade modal system. */
 .review-screen {
   position: relative;
   z-index: 1;
@@ -675,22 +715,24 @@ button {
   outline: none;
 }
 
+.arcade-modal-backdrop,
 .auth-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(2, 4, 10, 0.78);
+  background: var(--modal-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: clamp(12px, 3vw, 24px);
 }
 
+.arcade-modal,
 .auth-modal {
   position: relative;
   width: min(540px, 100%);
-  background: #050508;
-  border: 4px solid var(--accent);
+  background: var(--modal-panel-solid);
+  border: 4px solid var(--modal-border);
   border-radius: 16px;
   padding: clamp(20px, 3vw, 32px);
   color: var(--ink);
@@ -699,11 +741,13 @@ button {
   display: grid;
   gap: clamp(12px, 2vw, 18px);
   text-shadow: 2px 2px 0 #000;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--modal-shadow);
   overflow: hidden;
   isolation: isolate;
 }
 
+.arcade-modal::before,
+.arcade-modal::after,
 .auth-modal::before,
 .auth-modal::after {
   content: "";
@@ -712,6 +756,7 @@ button {
   pointer-events: none;
 }
 
+.arcade-modal::before,
 .auth-modal::before {
   z-index: 10;
   background:
@@ -720,6 +765,7 @@ button {
   opacity: 0.34;
 }
 
+.arcade-modal::after,
 .auth-modal::after {
   z-index: 11;
   background:
@@ -728,31 +774,48 @@ button {
   mix-blend-mode: screen;
 }
 
+.arcade-modal > *,
 .auth-modal > * {
   position: relative;
   z-index: 3;
 }
 
+.arcade-modal h2,
 .auth-modal h2 {
   margin: 0;
   color: var(--accent);
-  font-size: clamp(18px, 3.6vw, 28px);
+  font-size: var(--modal-title-size);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
+.arcade-modal p,
 .auth-modal p {
   margin: 0;
-  font-size: clamp(11px, 1.5vw, 14px);
+  font-size: var(--modal-body-size);
   line-height: 1.7;
 }
 
+.arcade-modal-prompt,
+.auth-modal-prompt {
+  margin-top: clamp(6px, 1.4vw, 12px);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.arcade-modal-account-label,
+.auth-modal-account {
+  color: var(--good);
+}
+
+.arcade-modal-actions,
 .auth-modal-actions {
   display: flex;
   flex-wrap: nowrap;
   justify-content: center;
   align-items: center;
-  gap: 16px;
+  gap: var(--modal-action-gap);
   margin-top: clamp(8px, 1.6vw, 14px);
 }
 
@@ -761,13 +824,14 @@ button {
   min-width: 178px;
   min-height: 56px;
   border: 4px solid var(--stroke);
-  background: #2a2a34;
-  color: #fff9e8;
+  background: var(--modal-panel-secondary);
+  color: var(--modal-text);
   font-family: var(--tweet-font);
   font-size: 14px;
   line-height: 1;
   letter-spacing: 0;
   text-transform: uppercase;
+  white-space: nowrap;
   padding: 0 18px;
   border-radius: 0;
   cursor: pointer;
@@ -787,7 +851,7 @@ button {
 
 .arcade-button-secondary {
   border-color: var(--stroke);
-  color: #fff9e8;
+  color: var(--modal-text);
 }
 
 .arcade-button-secondary:hover,
@@ -797,12 +861,16 @@ button {
 
 .arcade-button-primary {
   background: var(--accent);
-  color: #09090d;
+  color: var(--modal-primary-text);
 }
 
 .arcade-button-primary:hover,
 .arcade-button-primary:focus-visible {
   background: #f0a726;
+}
+
+.unlink-confirm-button {
+  text-transform: lowercase;
 }
 
 @media (max-width: 760px), (pointer: coarse) {
@@ -910,27 +978,46 @@ button {
     cursor: default;
   }
 
+  .arcade-modal-backdrop,
   .auth-modal-backdrop {
-    align-items: flex-start;
+    align-items: center;
     overflow-y: auto;
+    padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
+  .arcade-modal,
   .auth-modal {
     margin: auto 0;
+    width: min(520px, calc(100vw - 32px));
     max-height: calc(100dvh - 24px);
-    padding: 18px;
-    gap: 12px;
+    border-width: 5px;
+    border-radius: 18px;
+    padding: 26px 22px;
+    gap: 16px;
   }
 
+  .arcade-modal h2,
+  .auth-modal h2 {
+    font-size: 26px;
+  }
+
+  .arcade-modal p,
+  .auth-modal p {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .arcade-modal-actions,
   .auth-modal-actions {
-    gap: 10px;
+    gap: 14px;
+    margin-top: 10px;
   }
 
   .arcade-button {
-    min-width: 132px;
-    min-height: 48px;
-    padding: 0 12px;
-    font-size: 10px;
+    min-width: 160px;
+    min-height: 56px;
+    padding: 0 14px;
+    font-size: 12px;
   }
 }
 

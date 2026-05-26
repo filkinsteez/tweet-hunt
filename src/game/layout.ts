@@ -115,8 +115,8 @@ export const PORTRAIT_LAYOUT: GameplayLayoutProfile = {
     birdFlyAwayVy: -335,
     clayLaunchY: 760,
     clayBaseVx: 108,
-    clayBaseVy: -560,
-    clayGravity: 330,
+    clayBaseVy: -640,
+    clayGravity: 345,
     touchHitRadius: 56,
     clayHitRadius: 44,
     targetScale: 0.9

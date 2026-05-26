@@ -11,6 +11,7 @@ type Props = {
   onNextRound: () => void;
 };
 
+// Legacy DOM review kept as an inactive fallback. The live review flow uses ArcadeRoundReview.
 export function RoundReview({ result, onChangeGame, onNextRound }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
 

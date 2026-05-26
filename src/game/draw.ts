@@ -388,12 +388,13 @@ export function drawTarget(
   timeMs: number,
   flyFrames?: FlyFrameImages | null,
   birdShotImage?: HTMLImageElement | null,
-  clayTargetAtlas?: CanvasImageSource | null
+  clayTargetAtlas?: CanvasImageSource | null,
+  clayRenderScale = 1
 ) {
   if (target.mechanicsState === "waiting" || target.mechanicsState === "clear") return;
 
   if (target.kind === "clay") {
-    drawClay(ctx, target, timeMs, clayTargetAtlas);
+    drawClay(ctx, target, timeMs, clayTargetAtlas, clayRenderScale);
     return;
   }
 
@@ -468,15 +469,15 @@ function flightRowForTarget(target: TargetEntity) {
   return 0;
 }
 
-function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas?: CanvasImageSource | null) {
+function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas?: CanvasImageSource | null, renderScale = 1) {
   if (clayTargetAtlas) {
-    drawAtlasClay(ctx, target, timeMs, clayTargetAtlas);
+    drawAtlasClay(ctx, target, timeMs, clayTargetAtlas, renderScale);
     return;
   }
 
   const shrink = Math.max(0.35, 1 - (target.clayImageIndex ?? 0) / 34);
-  const width = 34 * shrink;
-  const height = 12 * shrink;
+  const width = 34 * shrink * renderScale;
+  const height = 12 * shrink * renderScale;
 
   ctx.save();
   ctx.translate(target.x, target.y);
@@ -490,25 +491,26 @@ function drawClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: n
   ctx.stroke();
   if (target.status === "hit") {
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-26 * shrink, -24 * shrink, 14 * shrink, 14 * shrink);
-    ctx.fillRect(12 * shrink, 16 * shrink, 16 * shrink, 13 * shrink);
+    ctx.fillRect(-26 * shrink * renderScale, -24 * shrink * renderScale, 14 * shrink * renderScale, 14 * shrink * renderScale);
+    ctx.fillRect(12 * shrink * renderScale, 16 * shrink * renderScale, 16 * shrink * renderScale, 13 * shrink * renderScale);
   }
   ctx.restore();
 }
 
-function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas: CanvasImageSource) {
+function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, timeMs: number, clayTargetAtlas: CanvasImageSource, renderScale = 1) {
   const imageIndex = Math.min(Math.max(target.clayImageIndex ?? 0, 0), 11);
   const frameIndex = Math.min(Math.floor((imageIndex / 11) * (CLAY_TARGET_FRAMES.length - 1)), CLAY_TARGET_FRAMES.length - 1);
   const frame = CLAY_TARGET_FRAMES[frameIndex];
-  const width = frame.width * CLAY_SPRITE_SCALE;
-  const height = frame.height * CLAY_SPRITE_SCALE;
+  const clayScale = CLAY_SPRITE_SCALE * renderScale;
+  const width = frame.width * clayScale;
+  const height = frame.height * clayScale;
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(target.x, target.y);
 
   if (target.status === "hit") {
-    drawClayFragments(ctx, timeMs);
+    drawClayFragments(ctx, timeMs, renderScale);
     ctx.restore();
     return;
   }
@@ -518,7 +520,7 @@ function drawAtlasClay(ctx: CanvasRenderingContext2D, target: TargetEntity, time
   ctx.restore();
 }
 
-function drawClayFragments(ctx: CanvasRenderingContext2D, timeMs: number) {
+function drawClayFragments(ctx: CanvasRenderingContext2D, timeMs: number, renderScale = 1) {
   const flicker = Math.floor((timeMs / 90) % 2);
   const particles = [
     [-34, -42, 2], [34, -42, 2],
@@ -530,9 +532,10 @@ function drawClayFragments(ctx: CanvasRenderingContext2D, timeMs: number) {
 
   ctx.save();
   for (const [x, y, size] of particles) {
-    const pixelSize = size * CLAY_SPRITE_SCALE * 0.5;
-    const drawX = x + Math.sign(x || 1) * flicker - pixelSize / 2;
-    const drawY = y + Math.sign(y || 1) * flicker - pixelSize / 2;
+    const particleScale = CLAY_SPRITE_SCALE * renderScale;
+    const pixelSize = size * particleScale * 0.5;
+    const drawX = x * renderScale + Math.sign(x || 1) * flicker - pixelSize / 2;
+    const drawY = y * renderScale + Math.sign(y || 1) * flicker - pixelSize / 2;
     ctx.fillStyle = "#08080c";
     ctx.fillRect(drawX + 1, drawY + 1, pixelSize, pixelSize);
     ctx.fillStyle = "#fffefd";

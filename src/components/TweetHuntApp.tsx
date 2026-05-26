@@ -76,6 +76,9 @@ const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
 const MOBILE_TITLE_HEADING_SIZE = 23;
 const MOBILE_TITLE_LABEL_SIZE = 31;
 const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
+const TITLE_UNLINK_LABEL = "unlink account";
+const TITLE_UNLINK_RECT = { x: 514, y: 624, width: 240, height: 34 };
+const MOBILE_TITLE_UNLINK_RECT = { x: 132, y: 890, width: 276, height: 46 };
 const WELCOME_BIRD_COLUMNS = 4;
 const WELCOME_BIRD_ROWS = 3;
 const WELCOME_BIRD_SIZE = 138;
@@ -272,6 +275,7 @@ export function TweetHuntApp() {
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
   const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
+  const [showUnlinkModal, setShowUnlinkModal] = useState(false);
   const welcomeBirdsRef = useRef<WelcomeBirdRuntime[]>([]);
   const welcomeBirdHitRegionsRef = useRef<WelcomeBirdSnapshot[]>([]);
   const welcomeBirdFrameAtRef = useRef<number | null>(null);
@@ -475,6 +479,20 @@ export function TweetHuntApp() {
     setRoundTweets([]);
     setIsLiveTweetRound(false);
     setUseArcadeFallback(false);
+    setShowUnlinkModal(false);
+  }
+
+  function requestUnlinkAuthorization() {
+    if (authStatus !== "authorized") return;
+    setShowUnlinkModal(true);
+  }
+
+  function cancelUnlinkAuthorization() {
+    setShowUnlinkModal(false);
+  }
+
+  async function confirmUnlinkAuthorization() {
+    await revokeAuthorization();
   }
 
   function handleRoundEnd(result: RoundResult) {
@@ -539,10 +557,11 @@ export function TweetHuntApp() {
     setStage("title");
   }
 
-  const hasIntroBannerContent = authStatus === "authorized" || Boolean(authError) || Boolean(tweetLoadError);
+  const hasIntroBannerContent = Boolean(authError) || Boolean(tweetLoadError);
   const mobileScreenClass = isPortraitLayout(layout) ? " game-shell-mobile-screen" : "";
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
+  const linkedAccountLabel = handle ? `@${handle}` : "your linked X account";
   const welcomeScreenImages = useMemo(() => ({ title: welcomeTitleAsset.src, play: welcomePlayAsset.src, bird: chatGptBirdFlyAsset.src }), []);
   const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src, title: welcomeTitleAsset.src }), []);
   const drawWelcomeScreen = useCallback(({ ctx, images, timeMs }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement>; timeMs: number }) => {
@@ -659,6 +678,13 @@ export function TweetHuntApp() {
           color: "#70e27b",
           align: "center"
         });
+        if (authStatus === "authorized") {
+          drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, MOBILE_TITLE_UNLINK_RECT.y + 28, {
+            size: 12,
+            color: "#70e27b",
+            align: "center"
+          });
+        }
         for (const mode of ["A", "B", "C"] as const) {
           const row = MOBILE_TITLE_MODE_ROWS[mode];
           drawPixelText(ctx, TITLE_MODE_HEADINGS[mode], layout.width / 2, row.headingY, {
@@ -680,6 +706,13 @@ export function TweetHuntApp() {
         size: TITLE_TOP_SCORE.size,
         color: "#fff9e8"
       });
+      if (authStatus === "authorized") {
+        drawPixelText(ctx, TITLE_UNLINK_LABEL, TITLE_UNLINK_RECT.x + TITLE_UNLINK_RECT.width / 2, TITLE_UNLINK_RECT.y + 24, {
+          size: 12,
+          color: "#70e27b",
+          align: "center"
+        });
+      }
 
       if (titleSelectionMode) {
         const position = TITLE_SELECTION_POSITIONS[titleSelectionMode];
@@ -692,7 +725,7 @@ export function TweetHuntApp() {
         }
       }
     },
-    [layout, titleSelectionMode, titleTopScore]
+    [authStatus, layout, titleSelectionMode, titleTopScore]
   );
 
   function renderIntroBanner() {
@@ -711,13 +744,6 @@ export function TweetHuntApp() {
           </p>
         ) : null}
         {tweetLoadError ? <p className="intro-banner-error">{tweetLoadError}</p> : null}
-        {authStatus === "authorized" ? (
-          <div className="intro-banner-actions">
-            <button type="button" className="arcade-button arcade-button-secondary unlink-button" onClick={revokeAuthorization}>
-              Unlink X account
-            </button>
-          </div>
-        ) : null}
       </aside>
     );
   }
@@ -737,33 +763,36 @@ export function TweetHuntApp() {
   }
 
   if (stage === "title") {
-    const modalCopy =
+    const modalBody =
       isLoadingTweets
         ? "Loading live tweets from your linked X account..."
         : authStatus === "authorized"
-          ? "Shooting a bird will delete a real tweet from your account. This action cannot be undone. Continue?"
+          ? "Shooting a bird will delete a real tweet from your account. This action cannot be undone."
         : authStatus === "unknown"
           ? "Checking your authorization status…"
           : "Tweet Hunt needs permission to delete tweets from your X account. Authorize with X to continue.";
 
+    const modalPrompt = authStatus === "authorized" && !isLoadingTweets ? "Continue?" : null;
+
     const modalPrimaryLabel =
       isLoadingTweets
-        ? "Loading tweets..."
+        ? "Loading..."
         : authStatus === "authorized"
           ? "Let's hunt"
         : authStatus === "unknown"
           ? "Checking…"
-          : "Authorize with X";
+          : "Authorize";
 
     const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
     const titleOptionRects = isPortraitLayout(layout) ? MOBILE_TITLE_OPTION_RECTS : LANDSCAPE_TITLE_OPTION_RECTS;
+    const titleUnlinkRect = isPortraitLayout(layout) ? MOBILE_TITLE_UNLINK_RECT : TITLE_UNLINK_RECT;
 
     return (
       <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
         <div className="game-stage">
           <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
-            <div className="title-hit-regions" aria-label="Choose a game mode">
+            <div className="title-hit-regions" aria-label="Choose a game mode or manage linked account">
               <button
                 className="title-option title-option-a"
                 type="button"
@@ -800,22 +829,34 @@ export function TweetHuntApp() {
               >
                 {TITLE_MODE_LABELS.C}
               </button>
+              {authStatus === "authorized" ? (
+                <button
+                  className="title-unlink-button"
+                  type="button"
+                  style={canvasRectStyle(layout, titleUnlinkRect)}
+                  aria-label={`Unlink account ${linkedAccountLabel}`}
+                  onClick={requestUnlinkAuthorization}
+                >
+                  {TITLE_UNLINK_LABEL}
+                </button>
+              ) : null}
             </div>
           </ArcadeScreenCanvas>
         </div>
 
         {pendingMode ? (
           <div
-            className="auth-modal-backdrop"
+            className="arcade-modal-backdrop"
             role="dialog"
             aria-modal="true"
             aria-labelledby="auth-modal-title"
             onClick={cancelPendingMode}
           >
-            <div className="auth-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="arcade-modal arcade-modal-destructive" onClick={(event) => event.stopPropagation()}>
               <h2 id="auth-modal-title">Warning</h2>
-              <p>{modalCopy}</p>
-              <div className="auth-modal-actions">
+              <p>{modalBody}</p>
+              {modalPrompt ? <p className="arcade-modal-prompt">{modalPrompt}</p> : null}
+              <div className="arcade-modal-actions">
                 <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
                   Cancel
                 </button>
@@ -826,6 +867,30 @@ export function TweetHuntApp() {
                   disabled={modalPrimaryDisabled}
                 >
                   {modalPrimaryLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showUnlinkModal ? (
+          <div
+            className="arcade-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unlink-modal-title"
+            onClick={cancelUnlinkAuthorization}
+          >
+            <div className="arcade-modal arcade-modal-account" onClick={(event) => event.stopPropagation()}>
+              <h2 id="unlink-modal-title">Unlink account?</h2>
+              <p className="arcade-modal-account-label">Account linked: {linkedAccountLabel}</p>
+              <p>This disconnects Tweet Hunt from that account. You can authorize again later.</p>
+              <div className="arcade-modal-actions">
+                <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelUnlinkAuthorization}>
+                  Cancel
+                </button>
+                <button type="button" className="arcade-button arcade-button-primary unlink-confirm-button" onClick={confirmUnlinkAuthorization}>
+                  unlink account
                 </button>
               </div>
             </div>
