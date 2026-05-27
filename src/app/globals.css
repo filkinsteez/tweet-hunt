@@ -276,8 +276,8 @@ button {
   height: 55.4%;
   overflow: hidden;
   background: #02030a;
-  /* Curve matches the CRT bezel's rounded screen corners and slight top/bottom bulge. */
-  border-radius: 9% / 11%;
+  /* Keep the picture close to the TV glass shape without rounding away the game corners. */
+  border-radius: 3.2% / 5.8%;
   isolation: isolate;
 }
 

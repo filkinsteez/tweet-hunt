@@ -24,6 +24,8 @@ uniform float uWarpY;
 varying vec2 vUv;
 
 const float LOGICAL_RASTER_HEIGHT = 240.0;
+const float SCREEN_IMAGE_SCALE = 0.972;
+const float SCREEN_IMAGE_CORNER_RADIUS = 0.115;
 
 float random(vec2 value) {
   return fract(sin(dot(value, vec2(127.1, 311.7))) * 43758.5453123);
@@ -68,8 +70,21 @@ vec3 softHalation(vec2 uv, vec3 color) {
   return max(glow - vec3(0.48), vec3(0.0)) * 0.045;
 }
 
+float roundedRectDistance(vec2 point, vec2 halfSize, float radius) {
+  vec2 offset = abs(point) - halfSize + vec2(radius);
+  return length(max(offset, vec2(0.0))) + min(max(offset.x, offset.y), 0.0) - radius;
+}
+
 void main() {
-  vec2 uv = curveUv(vUv);
+  vec2 displayUv = (vUv - 0.5) / SCREEN_IMAGE_SCALE + 0.5;
+  vec2 displayPosition = displayUv * 2.0 - 1.0;
+  float imageEdge = roundedRectDistance(displayPosition, vec2(1.0), SCREEN_IMAGE_CORNER_RADIUS);
+  if (imageEdge > 0.012) {
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  vec2 uv = curveUv(displayUv);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     return;
@@ -84,11 +99,7 @@ void main() {
   color = color * scanline + brightLineLift;
   color *= phosphorMask(color);
   color += softHalation(uv, color);
-
-  vec2 centered = vUv * 2.0 - 1.0;
-  float vignette = 1.0 - dot(centered, centered) * 0.075;
-  float glassEdge = mix(0.94, 1.0, smoothstep(1.08, 0.78, length(centered * vec2(0.96, 1.04))));
-  color *= clamp(vignette, 0.86, 1.0) * glassEdge;
+  color *= 1.0 - smoothstep(-0.018, 0.012, imageEdge) * 0.22;
 
   float noise = random(gl_FragCoord.xy + vec2(uTime * 23.0, uTime * 13.0)) - 0.5;
   color += noise * 0.002;
