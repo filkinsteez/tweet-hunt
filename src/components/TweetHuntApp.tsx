@@ -14,7 +14,16 @@ import { gameAudio } from "@/game/audio";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
 import { isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { selectTweetCandidates } from "@/game/mockTweets";
-import { drawFullscreenImage, drawPixelText, type Rect } from "@/game/uiDraw";
+import {
+  drawArcadeButton,
+  drawArcadeModalPanel,
+  drawArcadeModalScrim,
+  drawArcadeModalTitle,
+  drawFullscreenImage,
+  drawPixelText,
+  drawWrappedPixelText,
+  type Rect
+} from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 
@@ -94,6 +103,74 @@ const LANDSCAPE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; wid
   B: { x: 211, y: 451, width: 634, height: 44 },
   C: { x: 211, y: 500, width: 634, height: 44 }
 };
+const TITLE_MODAL_LANDSCAPE = {
+  panel: { x: 52, y: 116, width: 856, height: 476 },
+  cancelButton: { x: 152, y: 480, width: 304, height: 80 },
+  primaryButton: { x: 504, y: 480, width: 304, height: 80 },
+  titleY: 150,
+  bodyY: 260,
+  promptY: 416,
+  bodyWidth: 736,
+  bodySize: 24,
+  bodyLineHeight: 42,
+  titleSize: 44,
+  buttonTextSize: 24
+};
+const TITLE_MODAL_PORTRAIT = {
+  panel: { x: 20, y: 226, width: 500, height: 504 },
+  cancelButton: { x: 52, y: 624, width: 200, height: 76 },
+  primaryButton: { x: 288, y: 624, width: 200, height: 76 },
+  titleY: 290,
+  bodyY: 386,
+  promptY: 538,
+  bodyWidth: 432,
+  bodySize: 18,
+  bodyLineHeight: 34,
+  titleSize: 34,
+  buttonTextSize: 18
+};
+
+type TitleModalLayout = typeof TITLE_MODAL_LANDSCAPE;
+type TitleModalCopy = {
+  title: string;
+  titleColor?: string;
+  body: string;
+  prompt?: string | null;
+  cancelLabel: string;
+  primaryLabel: string;
+  primaryDisabled?: boolean;
+};
+
+function getTitleModalLayout(layout: GameplayLayoutProfile): TitleModalLayout {
+  return isPortraitLayout(layout) ? TITLE_MODAL_PORTRAIT : TITLE_MODAL_LANDSCAPE;
+}
+
+function drawTitleModal(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, copy: TitleModalCopy) {
+  const modal = getTitleModalLayout(layout);
+  drawArcadeModalScrim(ctx);
+  drawArcadeModalPanel(ctx, modal.panel);
+  drawArcadeModalTitle(ctx, copy.title.toUpperCase(), layout.width / 2, modal.titleY, modal.titleSize, copy.titleColor);
+  drawWrappedPixelText(ctx, copy.body, layout.width / 2, modal.bodyY, modal.bodyWidth, modal.bodyLineHeight, {
+    size: modal.bodySize,
+    color: "#fff9e8",
+    align: "center"
+  });
+  if (copy.prompt) {
+    drawPixelText(ctx, copy.prompt.toUpperCase(), layout.width / 2, modal.promptY, {
+      size: modal.bodySize,
+      color: "#e79a1b",
+      align: "center"
+    });
+  }
+  drawArcadeButton(ctx, modal.cancelButton, copy.cancelLabel.toUpperCase(), { variant: "secondary", textSize: modal.buttonTextSize });
+  drawArcadeButton(ctx, modal.primaryButton, copy.primaryLabel.toUpperCase(), { variant: "primary", textSize: modal.buttonTextSize });
+  if (copy.primaryDisabled) {
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.fillRect(modal.primaryButton.x, modal.primaryButton.y, modal.primaryButton.width, modal.primaryButton.height);
+    ctx.restore();
+  }
+}
 
 function fitImageWidth(image: HTMLImageElement | undefined, width: number) {
   if (!image) return null;
@@ -562,6 +639,42 @@ export function TweetHuntApp() {
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
   const linkedAccountLabel = handle ? `@${handle}` : "your linked X account";
+  const modalBody =
+    isLoadingTweets
+      ? "Loading live Tweets from your linked X account..."
+      : authStatus === "authorized"
+        ? "Shooting a bird will delete a real Tweet from your account. This action cannot be undone."
+      : authStatus === "unknown"
+        ? "Checking your authorization status..."
+        : "Tweet Hunt needs permission to delete Tweets from your X account. Authorize with X to continue.";
+  const modalPrompt = authStatus === "authorized" && !isLoadingTweets ? "Continue?" : null;
+  const modalPrimaryLabel =
+    isLoadingTweets
+      ? "Loading..."
+      : authStatus === "authorized"
+        ? "Let's hunt"
+      : authStatus === "unknown"
+        ? "Checking..."
+        : "Authorize";
+  const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
+  const activeTitleModal = pendingMode
+    ? {
+        title: "Warning",
+        titleColor: "#ff5c51",
+        body: modalBody,
+        prompt: modalPrompt,
+        cancelLabel: "Cancel",
+        primaryLabel: modalPrimaryLabel,
+        primaryDisabled: modalPrimaryDisabled
+      }
+    : showUnlinkModal
+      ? {
+          title: "Unlink account?",
+          body: `Account linked: ${linkedAccountLabel}. This disconnects Tweet Hunt from that account. You can authorize again later.`,
+          cancelLabel: "Cancel",
+          primaryLabel: "Unlink"
+        }
+      : null;
   const welcomeScreenImages = useMemo(() => ({ title: welcomeTitleAsset.src, play: welcomePlayAsset.src, bird: chatGptBirdFlyAsset.src }), []);
   const titleScreenImages = useMemo(() => ({ background: titleAsset.src, selection: titleSelectionAsset.src, title: welcomeTitleAsset.src }), []);
   const drawWelcomeScreen = useCallback(({ ctx, images, timeMs }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement>; timeMs: number }) => {
@@ -698,6 +811,9 @@ export function TweetHuntApp() {
             align: "center"
           });
         }
+        if (activeTitleModal) {
+          drawTitleModal(ctx, layout, activeTitleModal);
+        }
         return;
       }
 
@@ -724,8 +840,11 @@ export function TweetHuntApp() {
           drawPixelText(ctx, ">", position.x, position.y - 2, { size: 24, color: "#fff9e8" });
         }
       }
+      if (activeTitleModal) {
+        drawTitleModal(ctx, layout, activeTitleModal);
+      }
     },
-    [authStatus, layout, titleSelectionMode, titleTopScore]
+    [activeTitleModal, authStatus, layout, titleSelectionMode, titleTopScore]
   );
 
   function renderIntroBanner() {
@@ -758,29 +877,13 @@ export function TweetHuntApp() {
   }
 
   if (stage === "title") {
-    const modalBody =
-      isLoadingTweets
-        ? "Loading live tweets from your linked X account..."
-        : authStatus === "authorized"
-          ? "Shooting a bird will delete a real tweet from your account. This action cannot be undone."
-        : authStatus === "unknown"
-          ? "Checking your authorization status…"
-          : "Tweet Hunt needs permission to delete tweets from your X account. Authorize with X to continue.";
-
-    const modalPrompt = authStatus === "authorized" && !isLoadingTweets ? "Continue?" : null;
-
-    const modalPrimaryLabel =
-      isLoadingTweets
-        ? "Loading..."
-        : authStatus === "authorized"
-          ? "Let's hunt"
-        : authStatus === "unknown"
-          ? "Checking…"
-          : "Authorize";
-
-    const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
     const titleOptionRects = isPortraitLayout(layout) ? MOBILE_TITLE_OPTION_RECTS : LANDSCAPE_TITLE_OPTION_RECTS;
     const titleUnlinkRect = isPortraitLayout(layout) ? MOBILE_TITLE_UNLINK_RECT : TITLE_UNLINK_RECT;
+    const titleModalLayout = getTitleModalLayout(layout);
+    const titleModalCancel = pendingMode ? cancelPendingMode : cancelUnlinkAuthorization;
+    const titleModalPrimary = pendingMode ? confirmPendingMode : confirmUnlinkAuthorization;
+    const titleModalTitleId = pendingMode ? "auth-modal-title" : "unlink-modal-title";
+    const titleModalBodyId = pendingMode ? "auth-modal-body" : "unlink-modal-body";
 
     return (
       <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
@@ -836,61 +939,49 @@ export function TweetHuntApp() {
                 </button>
               ) : null}
             </div>
-          </ArcadeScreenCanvas>
-        </div>
 
-        {pendingMode ? (
-          <div
-            className="arcade-modal-backdrop"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="auth-modal-title"
-            onClick={cancelPendingMode}
-          >
-            <div className="arcade-modal arcade-modal-destructive" onClick={(event) => event.stopPropagation()}>
-              <h2 id="auth-modal-title">Warning</h2>
-              <p>{modalBody}</p>
-              {modalPrompt ? <p className="arcade-modal-prompt">{modalPrompt}</p> : null}
-              <div className="arcade-modal-actions">
-                <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelPendingMode}>
-                  Cancel
+            {activeTitleModal ? (
+              <div
+                className="title-modal-hit-regions"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleModalTitleId}
+                aria-describedby={titleModalBodyId}
+                onClick={titleModalCancel}
+              >
+                <h2 id={titleModalTitleId} className="visually-hidden">
+                  {activeTitleModal.title}
+                </h2>
+                <p id={titleModalBodyId} className="visually-hidden">
+                  {activeTitleModal.body}
+                </p>
+                <button
+                  type="button"
+                  className="title-modal-hit-button"
+                  style={canvasRectStyle(layout, titleModalLayout.cancelButton)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    titleModalCancel();
+                  }}
+                >
+                  {activeTitleModal.cancelLabel}
                 </button>
                 <button
                   type="button"
-                  className="arcade-button arcade-button-primary"
-                  onClick={confirmPendingMode}
-                  disabled={modalPrimaryDisabled}
+                  className="title-modal-hit-button"
+                  style={canvasRectStyle(layout, titleModalLayout.primaryButton)}
+                  aria-disabled={activeTitleModal.primaryDisabled}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (!activeTitleModal.primaryDisabled) void titleModalPrimary();
+                  }}
                 >
-                  {modalPrimaryLabel}
+                  {activeTitleModal.primaryLabel}
                 </button>
               </div>
-            </div>
-          </div>
-        ) : null}
-
-        {showUnlinkModal ? (
-          <div
-            className="arcade-modal-backdrop"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="unlink-modal-title"
-            onClick={cancelUnlinkAuthorization}
-          >
-            <div className="arcade-modal arcade-modal-account" onClick={(event) => event.stopPropagation()}>
-              <h2 id="unlink-modal-title">Unlink account?</h2>
-              <p className="arcade-modal-account-label">Account linked: {linkedAccountLabel}</p>
-              <p>This disconnects Tweet Hunt from that account. You can authorize again later.</p>
-              <div className="arcade-modal-actions">
-                <button type="button" className="arcade-button arcade-button-secondary" onClick={cancelUnlinkAuthorization}>
-                  Cancel
-                </button>
-                <button type="button" className="arcade-button arcade-button-primary unlink-confirm-button" onClick={confirmUnlinkAuthorization}>
-                  unlink account
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+            ) : null}
+          </ArcadeScreenCanvas>
+        </div>
       </main>
     );
   }

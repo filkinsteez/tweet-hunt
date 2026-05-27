@@ -127,10 +127,10 @@ export function drawArcadeModalPanel(ctx: CanvasRenderingContext2D, rect: Rect, 
   });
 }
 
-export function drawArcadeModalTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 30) {
+export function drawArcadeModalTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 30, color: string = ARCADE_MODAL_STROKE) {
   drawPixelText(ctx, text, x, y, {
     size,
-    color: ARCADE_MODAL_STROKE,
+    color,
     align: "center"
   });
 }

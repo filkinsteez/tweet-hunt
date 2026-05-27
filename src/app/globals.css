@@ -668,11 +668,6 @@ button {
   color: var(--danger);
 }
 
-.arcade-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .link-button {
   appearance: none;
   background: transparent;
@@ -697,162 +692,40 @@ button {
   outline: none;
 }
 
-.arcade-modal-backdrop,
-.auth-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: var(--modal-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(12px, 3vw, 24px);
-}
-
-.arcade-modal,
-.auth-modal {
-  position: relative;
-  width: min(540px, 100%);
-  background: var(--modal-panel-solid);
-  border: 4px solid var(--modal-border);
-  border-radius: 16px;
-  padding: clamp(20px, 3vw, 32px);
-  color: var(--ink);
-  font-family: var(--tweet-font);
-  text-align: center;
-  display: grid;
-  gap: clamp(12px, 2vw, 18px);
-  text-shadow: 2px 2px 0 #000;
-  box-shadow: var(--modal-shadow);
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.arcade-modal::before,
-.arcade-modal::after,
-.auth-modal::before,
-.auth-modal::after {
-  content: "";
+.title-modal-hit-regions {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  z-index: 20;
 }
 
-.arcade-modal::before,
-.auth-modal::before {
-  z-index: 10;
-  background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 1px, rgba(255, 255, 255, 0.035) 1px 2px, transparent 2px 4px),
-    repeating-linear-gradient(to right, rgba(255, 35, 35, 0.10) 0 1px, rgba(35, 255, 120, 0.08) 1px 2px, rgba(70, 120, 255, 0.10) 2px 3px);
-  opacity: 0.34;
-}
-
-.arcade-modal::after,
-.auth-modal::after {
-  z-index: 11;
-  background:
-    radial-gradient(ellipse at 50% 35%, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.018) 38%, rgba(0, 0, 0, 0.18) 82%, rgba(0, 0, 0, 0.42) 100%),
-    linear-gradient(115deg, rgba(255, 255, 255, 0.10), transparent 24%, transparent 74%, rgba(255, 255, 255, 0.04));
-  mix-blend-mode: screen;
-}
-
-.arcade-modal > *,
-.auth-modal > * {
-  position: relative;
-  z-index: 3;
-}
-
-.arcade-modal h2,
-.auth-modal h2 {
-  margin: 0;
-  color: var(--accent);
-  font-size: var(--modal-title-size);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.arcade-modal p,
-.auth-modal p {
-  margin: 0;
-  font-size: var(--modal-body-size);
-  line-height: 1.7;
-}
-
-.arcade-modal-prompt,
-.auth-modal-prompt {
-  margin-top: clamp(6px, 1.4vw, 12px);
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.arcade-modal-account-label,
-.auth-modal-account {
-  color: var(--good);
-}
-
-.arcade-modal-actions,
-.auth-modal-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: center;
-  align-items: center;
-  gap: var(--modal-action-gap);
-  margin-top: clamp(8px, 1.6vw, 14px);
-}
-
-.arcade-button {
-  appearance: none;
-  min-width: 178px;
-  min-height: 56px;
-  border: 4px solid var(--stroke);
-  background: var(--modal-panel-secondary);
-  color: var(--modal-text);
-  font-family: var(--tweet-font);
-  font-size: 14px;
-  line-height: 1;
-  letter-spacing: 0;
-  text-transform: uppercase;
-  white-space: nowrap;
-  padding: 0 18px;
-  border-radius: 0;
+.title-modal-hit-button {
+  position: absolute;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
   cursor: pointer;
-  text-shadow: none;
-  transition: transform 80ms ease, background 80ms ease;
 }
 
-.arcade-button:hover,
-.arcade-button:focus-visible {
-  background: #363642;
-  outline: none;
+.title-modal-hit-button:focus-visible {
+  outline: 2px solid var(--good);
+  outline-offset: 3px;
 }
 
-.arcade-button:active {
-  transform: translateY(1px);
+.title-modal-hit-button[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
-.arcade-button-secondary {
-  border-color: var(--stroke);
-  color: var(--modal-text);
-}
-
-.arcade-button-secondary:hover,
-.arcade-button-secondary:focus-visible {
-  background: #363642;
-}
-
-.arcade-button-primary {
-  background: var(--accent);
-  color: var(--modal-primary-text);
-}
-
-.arcade-button-primary:hover,
-.arcade-button-primary:focus-visible {
-  background: #f0a726;
-}
-
-.unlink-confirm-button {
-  text-transform: lowercase;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 760px), (pointer: coarse) {
@@ -948,47 +821,6 @@ button {
     cursor: default;
   }
 
-  .arcade-modal-backdrop,
-  .auth-modal-backdrop {
-    align-items: center;
-    overflow-y: auto;
-    padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  }
-
-  .arcade-modal,
-  .auth-modal {
-    margin: auto 0;
-    width: min(520px, calc(100vw - 32px));
-    max-height: calc(100dvh - 24px);
-    border-width: 5px;
-    border-radius: 18px;
-    padding: 26px 22px;
-    gap: 16px;
-  }
-
-  .arcade-modal h2,
-  .auth-modal h2 {
-    font-size: 26px;
-  }
-
-  .arcade-modal p,
-  .auth-modal p {
-    font-size: 13px;
-    line-height: 1.55;
-  }
-
-  .arcade-modal-actions,
-  .auth-modal-actions {
-    gap: 14px;
-    margin-top: 10px;
-  }
-
-  .arcade-button {
-    min-width: 160px;
-    min-height: 56px;
-    padding: 0 14px;
-    font-size: 12px;
-  }
 }
 
 @media (max-width: 760px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape) {

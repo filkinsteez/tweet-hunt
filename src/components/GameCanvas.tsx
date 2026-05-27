@@ -917,27 +917,27 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
 
   drawArcadeModalScrim(ctx);
   drawArcadeModalPanel(ctx, layout.pausePanel);
-  drawArcadeModalTitle(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 52, 30);
+  drawArcadeModalTitle(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 48, isPortrait ? 36 : 44);
   if (isPortrait) {
-    drawPixelText(ctx, "TAP RESUME", layout.width / 2, layout.pausePanel.y + 116, {
-      size: 18,
+    drawPixelText(ctx, "TAP RESUME", layout.width / 2, layout.pausePanel.y + 132, {
+      size: 22,
       color: "#fff9e8",
       align: "center"
     });
-    drawPixelText(ctx, "TO CONTINUE", layout.width / 2, layout.pausePanel.y + 152, {
-      size: 18,
+    drawPixelText(ctx, "TO CONTINUE", layout.width / 2, layout.pausePanel.y + 172, {
+      size: 22,
       color: "#fff9e8",
       align: "center"
     });
   } else {
-    drawPixelText(ctx, "PRESS ESC TO RESUME", layout.width / 2, layout.pausePanel.y + 130, {
-      size: 18,
+    drawPixelText(ctx, "PRESS ESC TO RESUME", layout.width / 2, layout.pausePanel.y + 155, {
+      size: 22,
       color: "#fff9e8",
       align: "center"
     });
   }
-  drawArcadeButton(ctx, layout.pauseQuitButton, "QUIT", { variant: "secondary", textSize: 16 });
-  drawArcadeButton(ctx, layout.pauseResumeButton, "RESUME", { variant: "primary", textSize: 16 });
+  drawArcadeButton(ctx, layout.pauseQuitButton, "QUIT", { variant: "secondary", textSize: isPortrait ? 18 : 22 });
+  drawArcadeButton(ctx, layout.pauseResumeButton, "RESUME", { variant: "primary", textSize: isPortrait ? 18 : 22 });
 }
 
 function drawPortraitEnvironment(
