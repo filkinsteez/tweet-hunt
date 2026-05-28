@@ -8,4 +8,7 @@ dist
 coverage
 *.log
 
+# Over GitHub's 100 MB limit — keep locally only
+Assets/Photoshop/a_retro_crt_tv_with_rca_cables_coming_out_of_the_front_in_a_cozy_blue_lit_room_as_if_its_blue_hour__4fb0rfegxjwtqgiehkug_0.psd
+
 .vercel

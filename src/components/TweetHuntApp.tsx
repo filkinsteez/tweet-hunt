@@ -105,11 +105,11 @@ const LANDSCAPE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; wid
 };
 const TITLE_MODAL_LANDSCAPE = {
   panel: { x: 52, y: 116, width: 856, height: 476 },
-  cancelButton: { x: 152, y: 480, width: 304, height: 80 },
-  primaryButton: { x: 504, y: 480, width: 304, height: 80 },
-  titleY: 150,
+  cancelButton: { x: 152, y: 470, width: 304, height: 80 },
+  primaryButton: { x: 504, y: 470, width: 304, height: 80 },
+  titleY: 160,
   bodyY: 260,
-  promptY: 416,
+  promptY: 425,
   bodyWidth: 736,
   bodySize: 24,
   bodyLineHeight: 42,
@@ -746,12 +746,12 @@ export function TweetHuntApp() {
     }
 
     const titleWidth = 470;
-    const titleY = 38;
-    const bodyGapFromTitle = 24;
+    const titleY = 25;
+    const bodyGapFromTitle = 55;
     const bodySize = 24;
     const bodyLineHeight = 43;
-    const groupGap = 44;
-    const buttonGap = 42;
+    const groupGap = 60;
+    const buttonGap = 45;
     const playWidth = 270;
     const titleSize = fitImageWidth(images.title, titleWidth);
     const introTextHeight = bodySize + (introLines.length - 1) * bodyLineHeight;
