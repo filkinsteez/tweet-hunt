@@ -21,7 +21,8 @@ import {
   drawArcadeModalTitle,
   drawFullscreenImage,
   drawPixelText,
-  drawWrappedPixelText,
+  drawWrappedUiText,
+  wrapUiText,
   type Rect
 } from "@/game/uiDraw";
 import type { GameMode, HuntConfig, RoundResult, TweetCandidate } from "@/game/types";
@@ -57,7 +58,7 @@ const AUTH_ERROR_COPY: Record<NonNullable<AuthError>, string> = {
   "missing-config": "X OAuth isn't configured on the server. Add X_CLIENT_ID, X_CLIENT_SECRET, and X_REDIRECT_URI."
 };
 
-const TITLE_TOP_SCORE = { x: 548, y: 590, size: 24 };
+const TITLE_TOP_SCORE = { x: 548, y: 594, size: 24 };
 const TITLE_SELECTION_SIZE = { width: 32, height: 24 };
 const TITLE_SELECTION_POSITIONS: Record<GameMode, { x: number; y: number }> = {
   A: { x: 178, y: 409 },
@@ -80,7 +81,7 @@ const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: numbe
   C: { headingY: 690, labelY: 738 }
 };
 const MOBILE_TITLE_ART = { y: 70, width: 470 };
-const MOBILE_TITLE_TOP_SCORE_Y = 858;
+const MOBILE_TITLE_TOP_SCORE_Y = 865;
 const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
 const MOBILE_TITLE_HEADING_SIZE = 23;
 const MOBILE_TITLE_LABEL_SIZE = 31;
@@ -103,34 +104,48 @@ const LANDSCAPE_TITLE_OPTION_RECTS: Record<GameMode, { x: number; y: number; wid
   B: { x: 211, y: 451, width: 634, height: 44 },
   C: { x: 211, y: 500, width: 634, height: 44 }
 };
-const TITLE_MODAL_LANDSCAPE = {
-  panel: { x: 52, y: 116, width: 856, height: 476 },
-  cancelButton: { x: 152, y: 470, width: 304, height: 80 },
-  primaryButton: { x: 504, y: 470, width: 304, height: 80 },
-  titleY: 160,
-  bodyY: 260,
-  promptY: 425,
-  bodyWidth: 736,
-  bodySize: 24,
+const MODAL_BODY_COLOR = "#fff9e8";
+const TITLE_MODAL_SPEC_LANDSCAPE = {
+  panelWidth: 740,
+  paddingTop: 44,
+  paddingBottom: 40,
+  gapTitleBody: 28,
+  gapBodyPrompt: 20,
+  gapPromptButtons: 32,
+  gapBodyButtons: 36,
+  buttonWidth: 272,
+  buttonHeight: 72,
+  buttonGap: 36,
+  bodyWidth: 644,
+  bodySize: 28,
   bodyLineHeight: 42,
-  titleSize: 44,
-  buttonTextSize: 24
+  bodyWeight: 400,
+  titleSize: 40,
+  promptSize: 15,
+  promptLineHeight: 20,
+  buttonTextSize: 22
 };
-const TITLE_MODAL_PORTRAIT = {
-  panel: { x: 20, y: 226, width: 500, height: 504 },
-  cancelButton: { x: 52, y: 624, width: 200, height: 76 },
-  primaryButton: { x: 288, y: 624, width: 200, height: 76 },
-  titleY: 290,
-  bodyY: 386,
-  promptY: 538,
-  bodyWidth: 432,
-  bodySize: 18,
+const TITLE_MODAL_SPEC_PORTRAIT = {
+  panelWidth: 460,
+  paddingTop: 36,
+  paddingBottom: 32,
+  gapTitleBody: 24,
+  gapBodyPrompt: 16,
+  gapPromptButtons: 28,
+  gapBodyButtons: 32,
+  buttonWidth: 182,
+  buttonHeight: 68,
+  buttonGap: 24,
+  bodyWidth: 396,
+  bodySize: 22,
   bodyLineHeight: 34,
-  titleSize: 34,
-  buttonTextSize: 18
+  bodyWeight: 400,
+  titleSize: 32,
+  promptSize: 13,
+  promptLineHeight: 18,
+  buttonTextSize: 16
 };
 
-type TitleModalLayout = typeof TITLE_MODAL_LANDSCAPE;
 type TitleModalCopy = {
   title: string;
   titleColor?: string;
@@ -141,27 +156,76 @@ type TitleModalCopy = {
   primaryDisabled?: boolean;
 };
 
-function getTitleModalLayout(layout: GameplayLayoutProfile): TitleModalLayout {
-  return isPortraitLayout(layout) ? TITLE_MODAL_PORTRAIT : TITLE_MODAL_LANDSCAPE;
+function getTitleModalSpec(layout: GameplayLayoutProfile) {
+  return isPortraitLayout(layout) ? TITLE_MODAL_SPEC_PORTRAIT : TITLE_MODAL_SPEC_LANDSCAPE;
+}
+
+function buildTitleModalLayout(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, copy: TitleModalCopy) {
+  const spec = getTitleModalSpec(layout);
+  const bodyLines = wrapUiText(ctx, copy.body, spec.bodyWidth, spec.bodySize, spec.bodyWeight);
+  const bodyBlockHeight = bodyLines.length * spec.bodyLineHeight;
+  const hasPrompt = Boolean(copy.prompt);
+  const promptBlockHeight = hasPrompt ? spec.promptLineHeight : 0;
+  const gapBeforeButtons = hasPrompt ? spec.gapPromptButtons : spec.gapBodyButtons;
+  const gapBodyToNext = hasPrompt ? spec.gapBodyPrompt : 0;
+  const contentHeight =
+    spec.titleSize + spec.gapTitleBody + bodyBlockHeight + gapBodyToNext + promptBlockHeight + gapBeforeButtons + spec.buttonHeight;
+  const panelHeight = spec.paddingTop + contentHeight + spec.paddingBottom;
+  const panelX = Math.round((layout.width - spec.panelWidth) / 2);
+  const panelY = Math.round((layout.height - panelHeight) / 2);
+
+  let y = panelY + spec.paddingTop;
+  const titleY = y;
+  y += spec.titleSize + spec.gapTitleBody;
+  const bodyY = y;
+  y += bodyBlockHeight;
+  if (hasPrompt) y += spec.gapBodyPrompt;
+  const promptY = hasPrompt ? y : 0;
+  if (hasPrompt) y += promptBlockHeight;
+  y += gapBeforeButtons;
+  const buttonY = y;
+
+  const buttonsTotalWidth = spec.buttonWidth * 2 + spec.buttonGap;
+  const buttonsX = panelX + Math.round((spec.panelWidth - buttonsTotalWidth) / 2);
+
+  return {
+    panel: { x: panelX, y: panelY, width: spec.panelWidth, height: panelHeight },
+    cancelButton: { x: buttonsX, y: buttonY, width: spec.buttonWidth, height: spec.buttonHeight },
+    primaryButton: { x: buttonsX + spec.buttonWidth + spec.buttonGap, y: buttonY, width: spec.buttonWidth, height: spec.buttonHeight },
+    titleY,
+    bodyY,
+    promptY,
+    bodyWidth: spec.bodyWidth,
+    bodySize: spec.bodySize,
+    bodyLineHeight: spec.bodyLineHeight,
+    bodyWeight: spec.bodyWeight,
+    titleSize: spec.titleSize,
+    promptSize: spec.promptSize,
+    buttonTextSize: spec.buttonTextSize
+  };
+}
+
+function measureTitleModalLayout(layout: GameplayLayoutProfile, copy: TitleModalCopy) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas 2D context unavailable for modal layout.");
+  }
+
+  return buildTitleModalLayout(ctx, layout, copy);
 }
 
 function drawTitleModal(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile, copy: TitleModalCopy) {
-  const modal = getTitleModalLayout(layout);
+  const modal = buildTitleModalLayout(ctx, layout, copy);
   drawArcadeModalScrim(ctx);
   drawArcadeModalPanel(ctx, modal.panel);
   drawArcadeModalTitle(ctx, copy.title.toUpperCase(), layout.width / 2, modal.titleY, modal.titleSize, copy.titleColor);
-  drawWrappedPixelText(ctx, copy.body, layout.width / 2, modal.bodyY, modal.bodyWidth, modal.bodyLineHeight, {
+  drawWrappedUiText(ctx, copy.body, layout.width / 2, modal.bodyY, modal.bodyWidth, modal.bodyLineHeight, {
     size: modal.bodySize,
-    color: "#fff9e8",
-    align: "center"
+    color: MODAL_BODY_COLOR,
+    align: "center",
+    weight: modal.bodyWeight
   });
-  if (copy.prompt) {
-    drawPixelText(ctx, copy.prompt.toUpperCase(), layout.width / 2, modal.promptY, {
-      size: modal.bodySize,
-      color: "#e79a1b",
-      align: "center"
-    });
-  }
   drawArcadeButton(ctx, modal.cancelButton, copy.cancelLabel.toUpperCase(), { variant: "secondary", textSize: modal.buttonTextSize });
   drawArcadeButton(ctx, modal.primaryButton, copy.primaryLabel.toUpperCase(), { variant: "primary", textSize: modal.buttonTextSize });
   if (copy.primaryDisabled) {
@@ -170,6 +234,8 @@ function drawTitleModal(ctx: CanvasRenderingContext2D, layout: GameplayLayoutPro
     ctx.fillRect(modal.primaryButton.x, modal.primaryButton.y, modal.primaryButton.width, modal.primaryButton.height);
     ctx.restore();
   }
+
+  return modal;
 }
 
 function fitImageWidth(image: HTMLImageElement | undefined, width: number) {
@@ -639,15 +705,16 @@ export function TweetHuntApp() {
   const titleTopScore = String(Math.max(highScores.A, highScores.B, highScores.C)).padStart(6, "0");
   const titleSelectionMode = pendingMode ?? activeTitleMode;
   const linkedAccountLabel = handle ? `@${handle}` : "your linked X account";
+  const modalTitle =
+    isLoadingTweets ? "Loading Tweets" : authStatus === "authorized" ? "Live Tweet Mode" : authStatus === "unknown" ? "Checking Connection" : "Connect Account";
   const modalBody =
     isLoadingTweets
-      ? "Loading live Tweets from your linked X account..."
+      ? "Loading tweet candidates from your linked X account..."
       : authStatus === "authorized"
-        ? "Shooting a bird will delete a real Tweet from your account. This action cannot be undone."
+        ? `Connected to ${linkedAccountLabel}. Hit a real tweet bird to delete it immediately. Misses escape. Ready to hunt?`
       : authStatus === "unknown"
-        ? "Checking your authorization status..."
-        : "Tweet Hunt needs permission to delete Tweets from your X account. Authorize with X to continue.";
-  const modalPrompt = authStatus === "authorized" && !isLoadingTweets ? "Continue?" : null;
+        ? "Checking your account connection..."
+        : "Connect your X account to load tweet candidates for this round. Nothing is deleted when you connect.";
   const modalPrimaryLabel =
     isLoadingTweets
       ? "Loading..."
@@ -655,14 +722,13 @@ export function TweetHuntApp() {
         ? "Let's hunt"
       : authStatus === "unknown"
         ? "Checking..."
-        : "Authorize";
+        : "Connect X";
   const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
   const activeTitleModal = pendingMode
     ? {
-        title: "Warning",
-        titleColor: "#ff5c51",
+        title: modalTitle,
+        titleColor: authStatus === "authorized" ? "#ff5c51" : "#e79a1b",
         body: modalBody,
-        prompt: modalPrompt,
         cancelLabel: "Cancel",
         primaryLabel: modalPrimaryLabel,
         primaryDisabled: modalPrimaryDisabled
@@ -879,7 +945,7 @@ export function TweetHuntApp() {
   if (stage === "title") {
     const titleOptionRects = isPortraitLayout(layout) ? MOBILE_TITLE_OPTION_RECTS : LANDSCAPE_TITLE_OPTION_RECTS;
     const titleUnlinkRect = isPortraitLayout(layout) ? MOBILE_TITLE_UNLINK_RECT : TITLE_UNLINK_RECT;
-    const titleModalLayout = getTitleModalLayout(layout);
+    const titleModalLayout = activeTitleModal ? measureTitleModalLayout(layout, activeTitleModal) : null;
     const titleModalCancel = pendingMode ? cancelPendingMode : cancelUnlinkAuthorization;
     const titleModalPrimary = pendingMode ? confirmPendingMode : confirmUnlinkAuthorization;
     const titleModalTitleId = pendingMode ? "auth-modal-title" : "unlink-modal-title";
@@ -940,7 +1006,7 @@ export function TweetHuntApp() {
               ) : null}
             </div>
 
-            {activeTitleModal ? (
+            {activeTitleModal && titleModalLayout ? (
               <div
                 className="title-modal-hit-regions"
                 role="dialog"

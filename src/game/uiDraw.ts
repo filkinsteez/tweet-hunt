@@ -8,6 +8,14 @@ type PixelTextOptions = {
   shadow?: boolean;
 };
 
+type UiTextOptions = {
+  size?: number;
+  color?: string;
+  align?: CanvasTextAlign;
+  baseline?: CanvasTextBaseline;
+  weight?: number;
+};
+
 type PanelOptions = {
   fill?: string;
   stroke?: string;
@@ -28,6 +36,7 @@ export type Rect = {
 };
 
 const PIXEL_FONT = "'Press Start 2P', monospace";
+const UI_FONT = "Inter, system-ui, sans-serif";
 const ARCADE_MODAL_FILL = "rgba(5, 7, 16, 0.96)";
 const ARCADE_MODAL_STROKE = "#e79a1b";
 const ARCADE_MODAL_TEXT = "#fff9e8";
@@ -143,13 +152,30 @@ export function drawArcadeButton(ctx: CanvasRenderingContext2D, rect: Rect, labe
     stroke: ARCADE_MODAL_STROKE_DARK,
     lineWidth: 5
   });
-  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2, {
-    size: options.textSize ?? 16,
+  const textSize = options.textSize ?? 16;
+  drawPixelText(ctx, label, rect.x + rect.width / 2, rect.y + rect.height / 2 + Math.round(textSize * 0.12), {
+    size: textSize,
     color: isPrimary ? ARCADE_MODAL_PRIMARY_TEXT : ARCADE_MODAL_TEXT,
     align: "center",
     baseline: "middle",
     shadow: false
   });
+}
+
+export function drawUiText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, options: UiTextOptions = {}) {
+  const size = options.size ?? 18;
+
+  ctx.save();
+  ctx.font = `${options.weight ?? 600} ${size}px ${UI_FONT}`;
+  ctx.textAlign = options.align ?? "left";
+  ctx.textBaseline = options.baseline ?? "top";
+  ctx.fillStyle = options.color ?? ARCADE_MODAL_TEXT;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+export function wrapUiText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size = 18, weight = 600) {
+  return wrapText(ctx, text, maxWidth, `${weight} ${size}px ${UI_FONT}`);
 }
 
 export function drawWrappedPixelText(
@@ -171,9 +197,40 @@ export function drawWrappedPixelText(
   return lines.length;
 }
 
-export function wrapPixelText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size = 16) {
+export function drawWrappedUiText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  options: UiTextOptions = {}
+) {
+  const size = options.size ?? 18;
+  const weight = options.weight ?? 600;
+  const lines = wrapUiText(ctx, text, maxWidth, size, weight);
+
   ctx.save();
-  ctx.font = `${size}px ${PIXEL_FONT}`;
+  ctx.font = `${options.weight ?? 600} ${size}px ${UI_FONT}`;
+  ctx.textAlign = options.align ?? "left";
+  ctx.textBaseline = options.baseline ?? "top";
+  ctx.fillStyle = options.color ?? ARCADE_MODAL_TEXT;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    ctx.fillText(lines[index], x, y + index * lineHeight);
+  }
+
+  ctx.restore();
+  return lines.length;
+}
+
+export function wrapPixelText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size = 16) {
+  return wrapText(ctx, text, maxWidth, `${size}px ${PIXEL_FONT}`);
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, font: string) {
+  ctx.save();
+  ctx.font = font;
 
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
