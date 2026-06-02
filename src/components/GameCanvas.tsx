@@ -90,6 +90,7 @@ import { SHOW_CRT_CABINET } from "@/game/presentation";
 import { ENABLE_GOLDEN_DUCK_MODE } from "@/game/featureFlags";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 import { useCrtScreenLayout } from "@/hooks/useCrtScreenLayout";
+import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import {
   clearScene,
   drawClayEnvironment,
@@ -255,6 +256,7 @@ const DOG_INTRO_FLUSH_START_MS = DOG_INTRO_JUMP_START_MS;
 const DOG_INTRO_FLUSH_END_MS = DOG_INTRO_FLUSH_START_MS + DOG_INTRO_JUMP_MS;
 const DUCK_FLAP_INTERVAL_FRAMES = 8;
 const PORTRAIT_FRAME_INTERVAL_MS = 1000 / 30;
+const MOBILE_PAUSE_X_RECT: Rect = { x: 18, y: 28, width: 62, height: 62 };
 
 function introDurationForMode(mode: GameMode) {
   return mode === "C" ? CLAY_SHOOTING_INTRO_DURATION_MS : ROUND_INTRO_DURATION_MS;
@@ -465,7 +467,28 @@ function roundUiX(roundNumber: number, layout: GameplayLayoutProfile = LANDSCAPE
   const scale = uiScaleForLayout(layout);
   const shotsWidth = 29 * scale;
   const roundWidth = (roundNumber < 10 ? 24 : 32) * scale;
+  if (isPortraitLayout(layout)) return (layout.width - roundWidth) / 2;
   return hud.shots.x + (shotsWidth - roundWidth) / 2;
+}
+
+function drawMobilePauseX(ctx: CanvasRenderingContext2D, layout: GameplayLayoutProfile) {
+  if (!isPortraitLayout(layout)) return;
+
+  const rect = MOBILE_PAUSE_X_RECT;
+  ctx.save();
+  drawPixelBeveledPanel(ctx, rect, {
+    fill: "rgba(5, 5, 8, 0.72)",
+    stroke: "#fff9e8",
+    lineWidth: 3,
+    bevel: 6
+  });
+  drawPixelText(ctx, "X", rect.x + rect.width / 2, rect.y + rect.height / 2 + 1, {
+    size: 24,
+    color: "#fff9e8",
+    align: "center",
+    baseline: "middle"
+  });
+  ctx.restore();
 }
 
 function createInitialState(mode: GameMode, roundNumber: number, targetLimit: number, isLiveTweetRound: boolean, layout: GameplayLayoutProfile): RuntimeState {
@@ -774,17 +797,22 @@ function drawSpriteHud(
     const offsetX = Math.round(centeredLeft - groupLeft);
     hud.shots = { ...hud.shots, x: hud.shots.x + offsetX };
     hud.hit = { ...hud.hit, x: hud.hit.x + offsetX };
+    hud.score = { ...hud.score, x: Math.round(layout.width - score.naturalWidth * scale - 18) };
   }
-  const bottomHudLayout = { ...layout, hud };
+  const hudLayout = { ...layout, hud };
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber, layout), layout.hud.round.y, scale);
+  if (!isPortraitLayout(layout)) {
+    drawRoundUiImage(ctx, round, state.roundNumber, roundUiX(state.roundNumber, layout), layout.hud.round.y, scale);
+  }
   drawUiImage(ctx, shots, hud.shots.x, hud.shots.y, scale);
   drawUiImage(ctx, hit, hud.hit.x, hud.hit.y, scale);
-  drawUiImage(ctx, score, layout.hud.score.x, layout.hud.score.y, scale);
-  drawRoundNumber(ctx, roundAtlas, state.roundNumber, layout);
-  maskSpentShots(ctx, state.shotsRemaining, bottomHudLayout);
+  drawUiImage(ctx, score, hud.score.x, hud.score.y, scale);
+  if (!isPortraitLayout(layout)) {
+    drawRoundNumber(ctx, roundAtlas, state.roundNumber, layout);
+  }
+  maskSpentShots(ctx, state.shotsRemaining, hudLayout);
   if (isClayMode && clayHitCounterFilled && state.hits.length > 0) {
     drawClayHitCounterFilledOverlay(ctx, clayHitCounterFilled, state.hits.length, hud.hit, scale);
   } else if (isClayMode && clayHitFilled) {
@@ -794,9 +822,9 @@ function drawSpriteHud(
       sourceRect: CLAY_HIT_HUD_ATLAS_FRAME
     });
   } else if (hitAtlas) {
-    drawHitDucks(ctx, hitAtlas, state.hits.length, bottomHudLayout);
+    drawHitDucks(ctx, hitAtlas, state.hits.length, hudLayout);
   }
-  drawScoreNumber(ctx, scoreAtlas, state.score, layout);
+  drawScoreNumber(ctx, scoreAtlas, state.score, hudLayout);
   ctx.restore();
 }
 
@@ -2245,6 +2273,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     drawDuckCallButton(ctx, state.layout, state.duckCallStatus);
     drawGoldenFlushHud(ctx, state.layout, state.goldenFlushProgress, timeMs);
     drawFlockClearedFlash(ctx, state, timeMs);
+    drawMobilePauseX(ctx, state.layout);
     if (pausedRef.current) {
       drawPauseOverlay(ctx, state.layout);
     }
@@ -2482,6 +2511,12 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     }
 
     const state = stateRef.current;
+    const activeLayout = state?.layout ?? layout;
+    if (isPortraitLayout(activeLayout) && pointInRect(point, MOBILE_PAUSE_X_RECT)) {
+      setPausedState(true);
+      return;
+    }
+
     if (
       state &&
       isPortraitLayout(state.layout) &&
@@ -2533,6 +2568,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
           onPointerDown={handleCanvasPointerDown}
           aria-hidden={crtUnavailable}
         />
+        <CanvasLoadingOverlay visible={!assetReady || !fontReady} />
         <div className="screen-reader-only" aria-live="polite">
           {paused ? "Paused. Press Escape to resume, or click Resume or Quit on the game screen." : microReveal?.text ?? ""}
         </div>

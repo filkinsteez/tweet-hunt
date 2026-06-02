@@ -91,10 +91,10 @@ export const PORTRAIT_LAYOUT: GameplayLayoutProfile = {
   playBounds: { x: 0, y: 96, width: 540, height: 760 },
   groundY: 800,
   hud: {
-    round: { x: 26, y: 24 },
+    round: { x: 231, y: 38 },
     shots: { x: 26, y: 870 },
     hit: { x: 152, y: 870 },
-    score: { x: 314, y: 24 }
+    score: { x: 352, y: 24 }
   },
   microRevealPanel: { x: 10, y: 8, width: 520, height: 170 },
   pausePanel: { x: 46, y: 278, width: 448, height: 330 },

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import crtAsset from "../../Assets/CRT/crt_cold.jpg";
+import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
 import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
@@ -182,6 +183,7 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
           aria-hidden={crtUnavailable}
         />
         {children}
+        <CanvasLoadingOverlay visible={!assetReady || !fontReady} />
       </div>
     </div>
   );

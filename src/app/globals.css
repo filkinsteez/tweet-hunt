@@ -256,7 +256,7 @@ button {
 }
 
 .crt-cabinet.layout-portrait {
-  background: #02030a;
+  background: #000;
   border: 3px solid var(--stroke);
   border-radius: 10px;
 }
@@ -271,7 +271,7 @@ button {
 /* Clean presentation: drop the TV desk photo and show the game on a full 4:3 screen. */
 .crt-cabinet.crt-no-cabinet {
   aspect-ratio: 4 / 3;
-  background: #02030a;
+  background: #000;
   border: 3px solid var(--stroke);
   border-radius: 10px;
 }
@@ -290,7 +290,7 @@ button {
   width: 75.6%;
   height: 55.4%;
   overflow: hidden;
-  background: #02030a;
+  background: #000;
   /* Keep the picture close to the TV glass shape without rounding away the game corners. */
   border-radius: 3.2% / 5.8%;
   isolation: isolate;
@@ -415,6 +415,90 @@ button {
 .crt-crisp-screen .crt-screen::before,
 .crt-crisp-screen .crt-screen::after {
   display: none;
+}
+
+.canvas-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #000000;
+  color: var(--accent);
+  font-family: var(--tweet-font);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 1;
+  transition: opacity 0.52s ease;
+}
+
+/* Stage 2: the black panel fades out, revealing (fading in) the play screen. */
+.canvas-loading.is-screen-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-loading-label {
+  font-size: clamp(10px, 2.6vw, 18px);
+  animation: canvas-loading-pulse 1.1s ease-in-out infinite;
+  transition: opacity 0.28s ease;
+}
+
+/* Stage 1: the text fades out first while the panel stays solid black. */
+.canvas-loading.is-text-out .canvas-loading-label,
+.canvas-loading.is-screen-out .canvas-loading-label,
+.canvas-loading.is-text-out .canvas-loading-dots,
+.canvas-loading.is-screen-out .canvas-loading-dots {
+  animation: none;
+  opacity: 0;
+}
+
+.canvas-loading.is-text-out .canvas-loading-dots::after,
+.canvas-loading.is-screen-out .canvas-loading-dots::after {
+  content: "";
+  animation: none;
+}
+
+.canvas-loading-dots {
+  display: inline-block;
+  width: 1.6em;
+  font-size: clamp(10px, 2.6vw, 18px);
+  text-align: left;
+  transition: opacity 0.28s ease;
+}
+
+.canvas-loading-dots::after {
+  content: "";
+  animation: canvas-loading-dots 1.2s steps(1, end) infinite;
+}
+
+@keyframes canvas-loading-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+  100% { content: ""; }
+}
+
+@keyframes canvas-loading-pulse {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-loading,
+  .canvas-loading-label,
+  .canvas-loading-dots {
+    animation: none;
+    transition-duration: 0.12s;
+  }
+
+  .canvas-loading-dots::after {
+    content: "...";
+    animation: none;
+  }
 }
 
 @media (min-width: 761px) and (pointer: fine) {
@@ -857,7 +941,7 @@ button {
   .crt-cabinet,
   .crt-cabinet.layout-portrait {
     aspect-ratio: unset;
-    background: #02030a;
+    background: #000;
     border: 0;
     border-radius: 0;
   }
