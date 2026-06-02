@@ -136,9 +136,28 @@ export function drawArcadeModalPanel(ctx: CanvasRenderingContext2D, rect: Rect, 
   });
 }
 
-export function drawArcadeModalTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 30, color: string = ARCADE_MODAL_STROKE) {
+export function drawArcadeModalTitle(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  size = 30,
+  color: string = ARCADE_MODAL_STROKE,
+  maxWidth?: number
+) {
+  let finalSize = size;
+  if (maxWidth && maxWidth > 0) {
+    ctx.save();
+    ctx.font = `${size}px ${PIXEL_FONT}`;
+    const measured = ctx.measureText(text).width;
+    ctx.restore();
+    if (measured > maxWidth) {
+      finalSize = Math.max(12, Math.floor(size * (maxWidth / measured)));
+    }
+  }
+
   drawPixelText(ctx, text, x, y, {
-    size,
+    size: finalSize,
     color,
     align: "center"
   });

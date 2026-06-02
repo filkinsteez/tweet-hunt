@@ -5,6 +5,8 @@ import crtAsset from "../../Assets/CRT/crt_cold.jpg";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
 import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
+import { SHOW_CRT_CABINET } from "@/game/presentation";
+import { useCrtScreenLayout } from "@/hooks/useCrtScreenLayout";
 
 type ArcadeScreenDrawParams = {
   ctx: CanvasRenderingContext2D;
@@ -24,6 +26,7 @@ type Props = {
 
 export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "crt", layout = LANDSCAPE_LAYOUT, images, drawFrame, children }: Props) {
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cabinetRef = useRef<HTMLDivElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
   const imagesRef = useRef<Record<string, HTMLImageElement>>({});
@@ -33,7 +36,10 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
   const [fontReady, setFontReady] = useState(false);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const isPortrait = layout.id === "portrait";
-  const useCrt = presentation === "crt" && !isPortrait;
+  const useCrt = presentation === "crt" && !isPortrait && SHOW_CRT_CABINET;
+  const noCabinet = !SHOW_CRT_CABINET && !isPortrait;
+  const syncCrtScreen = useCrt && !crtUnavailable;
+  const crtScreenStyle = useCrtScreenLayout(cabinetRef, syncCrtScreen);
 
   useEffect(() => {
     mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
@@ -151,13 +157,17 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
     };
   }
 
+  const syncedCabinetClass = syncCrtScreen ? " crt-cabinet-synced" : "";
+  const noCabinetClass = noCabinet ? " crt-no-cabinet" : "";
+
   return (
     <div
-      className={`canvas-wrap crt-cabinet arcade-screen-canvas ${layout.className}${directSource ? " crt-fallback" : ""}${!useCrt ? " crt-crisp-screen" : ""}${className ? ` ${className}` : ""}`}
+      ref={cabinetRef}
+      className={`canvas-wrap crt-cabinet arcade-screen-canvas ${layout.className}${syncedCabinetClass}${noCabinetClass}${directSource ? " crt-fallback" : ""}${!useCrt ? " crt-crisp-screen" : ""}${className ? ` ${className}` : ""}`}
       style={{ "--crt-art": `url(${crtAsset.src})` } as CSSProperties}
       aria-label={ariaLabel}
     >
-      <div className="crt-screen" onMouseMove={handleMouseMove}>
+      <div className="crt-screen" style={crtScreenStyle} onMouseMove={handleMouseMove}>
         <canvas
           ref={sourceCanvasRef}
           className="game-canvas game-source-canvas"

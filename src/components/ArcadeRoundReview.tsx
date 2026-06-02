@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import chatGptGoldenBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_golden_birdsprite_fly.png";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
@@ -20,12 +20,13 @@ const REVIEW_IMAGES = { bird: chatGptBirdFlyAsset.src, goldenBird: chatGptGolden
 const BIRD_COLUMNS = 4;
 const BIRD_ROWS = 3;
 const PANEL: Rect = { x: 36, y: 32, width: 888, height: 656 };
-const CONTENT: Rect = { x: 80, y: 132, width: 800, height: 440 };
+const CONTENT: Rect = { x: 80, y: 134, width: 800, height: 440 };
 const SUMMARY_STATS_PANEL: Rect = { x: 140, y: 280, width: 680, height: 170 };
 const QUIT_BUTTON: Rect = { x: 220, y: 596, width: 180, height: 68 };
 const NEXT_ROUND_BUTTON: Rect = { x: 432, y: 596, width: 308, height: 68 };
 const BUTTON_TEXT_SIZE_PORTRAIT = 16;
 const BUTTON_TEXT_SIZE_DESKTOP = 18;
+const RESUME_SCROLL_DELAY_MS = 1800;
 const SUMMARY_ROUND_Y = 160;
 const SUMMARY_MODE_Y = 210;
 const SUMMARY_STATS_LABEL_Y = 318;
@@ -180,13 +181,16 @@ function drawGoldenSummaryCard(
   }
 }
 
+type ScrollResolver = (input: { scrollMax: number; autoScrollY: number }) => number;
+
 function drawTweetCreditList(
   ctx: CanvasRenderingContext2D,
   hits: RoundResult["hits"],
   content: Rect,
   timeMs: number,
   isPortrait: boolean,
-  images: Record<string, HTMLImageElement>
+  images: Record<string, HTMLImageElement>,
+  resolveScroll: ScrollResolver
 ) {
   const paddingX = isPortrait ? 24 : 56;
   const textSize = isPortrait ? 16 : 20;
@@ -225,7 +229,8 @@ function drawTweetCreditList(
     items.reduce((sum, item) => sum + item.height, 0) + Math.max(items.length - 1, 0) * groupGap;
   const scrollSpeed = isPortrait ? 0.034 : 0.045;
   const scrollMax = totalHeight;
-  const scrollY = scrollMax > 0 ? Math.min(timeMs * scrollSpeed, scrollMax) : 0;
+  const autoScrollY = scrollMax > 0 ? Math.min(timeMs * scrollSpeed, scrollMax) : 0;
+  const scrollY = resolveScroll({ scrollMax, autoScrollY });
   let y = viewportBottom - scrollY;
   const scrimHeight = isPortrait ? 80 : 84;
   const panelFill = "#101018";
@@ -278,6 +283,12 @@ function drawTweetCreditList(
 
 export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeGame, onNextRound }: Props) {
   const startTimeRef = useRef<number | null>(null);
+  const scrollRef = useRef(0);
+  const scrollMaxRef = useRef(0);
+  const manualScrollRef = useRef(false);
+  const lastInteractionRef = useRef(0);
+  const prevAutoRef = useRef(0);
+  const dragRef = useRef<{ active: boolean; lastY: number; pointerId: number | null }>({ active: false, lastY: 0, pointerId: null });
   const destructiveHits = useMemo(() => result.hits.filter((hit) => hit.tweet && !hit.isGolden), [result.hits]);
   const nonGoldenHitCount = useMemo(() => result.hits.filter((hit) => !hit.isGolden).length, [result.hits]);
   const isClayRound = result.mode === "C";
@@ -294,6 +305,87 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
     : CONTENT;
   const quitButton = isPortrait ? { x: 58, y: portraitButtonY, width: 180, height: 66 } : QUIT_BUTTON;
   const nextRoundButton = isPortrait ? { x: 276, y: portraitButtonY, width: 206, height: 66 } : NEXT_ROUND_BUTTON;
+
+  useEffect(() => {
+    startTimeRef.current = null;
+    scrollRef.current = 0;
+    scrollMaxRef.current = 0;
+    manualScrollRef.current = false;
+    lastInteractionRef.current = 0;
+    prevAutoRef.current = 0;
+    dragRef.current = { active: false, lastY: 0, pointerId: null };
+  }, [result]);
+
+  const resolveScroll = useCallback<ScrollResolver>(({ scrollMax, autoScrollY }) => {
+    scrollMaxRef.current = scrollMax;
+    if (scrollMax <= 0) {
+      scrollRef.current = 0;
+      prevAutoRef.current = autoScrollY;
+      return 0;
+    }
+
+    // Auto-scroll advances by the same per-frame delta, so resuming continues
+    // smoothly from the user's manual position instead of snapping.
+    const autoDelta = Math.max(0, autoScrollY - prevAutoRef.current);
+    prevAutoRef.current = autoScrollY;
+
+    const sinceInteraction = performance.now() - lastInteractionRef.current;
+    const holdManual = dragRef.current.active || (manualScrollRef.current && sinceInteraction < RESUME_SCROLL_DELAY_MS);
+
+    if (!holdManual) {
+      manualScrollRef.current = false;
+      scrollRef.current += autoDelta;
+    }
+
+    scrollRef.current = Math.min(Math.max(scrollRef.current, 0), scrollMax);
+    return scrollRef.current;
+  }, []);
+
+  const adjustScroll = useCallback((deltaLogical: number) => {
+    const scrollMax = scrollMaxRef.current;
+    if (scrollMax <= 0) return;
+    manualScrollRef.current = true;
+    lastInteractionRef.current = performance.now();
+    scrollRef.current = Math.min(Math.max(scrollRef.current + deltaLogical, 0), scrollMax);
+  }, []);
+
+  const logicalPerPixel = useCallback((element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.height <= 0) return 1;
+    return content.height / rect.height;
+  }, [content.height]);
+
+  const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    adjustScroll(event.deltaY * logicalPerPixel(event.currentTarget));
+  }, [adjustScroll, logicalPerPixel]);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (scrollMaxRef.current <= 0) return;
+    dragRef.current = { active: true, lastY: event.clientY, pointerId: event.pointerId };
+    manualScrollRef.current = true;
+    lastInteractionRef.current = performance.now();
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag.active || drag.pointerId !== event.pointerId) return;
+    const dyPixels = event.clientY - drag.lastY;
+    drag.lastY = event.clientY;
+    adjustScroll(-dyPixels * logicalPerPixel(event.currentTarget));
+  }, [adjustScroll, logicalPerPixel]);
+
+  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current.pointerId === event.pointerId) {
+      dragRef.current = { active: false, lastY: 0, pointerId: null };
+      lastInteractionRef.current = performance.now();
+    }
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // pointer may already be released
+    }
+  }, []);
 
   const drawFrame = useCallback(
     ({ ctx, images, timeMs }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement>; timeMs: number }) => {
@@ -321,8 +413,8 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         });
         drawGoldenSummaryCard(ctx, result, content, isPortrait, images, localTimeMs);
       } else if (hasTweetReview) {
-        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 72, isPortrait ? 20 : 24);
-        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 64 : 104, {
+        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 62, isPortrait ? 20 : 24);
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 58 : 96, {
           size: isPortrait ? 15 : 18,
           color: "#70e27b",
           align: "center"
@@ -332,7 +424,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
           stroke: "#2a2a34",
           lineWidth: 4
         });
-        drawTweetCreditList(ctx, destructiveHits, content, localTimeMs, isPortrait, images);
+        drawTweetCreditList(ctx, destructiveHits, content, localTimeMs, isPortrait, images, resolveScroll);
       } else {
         drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 210 : SUMMARY_ROUND_Y, isPortrait ? 19 : 28);
         drawPixelText(ctx, title, layout.width / 2, isPortrait ? 270 : SUMMARY_MODE_Y, {
@@ -392,6 +484,7 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       nonGoldenHitCount,
       panel,
       quitButton,
+      resolveScroll,
       result,
       result.hits.length,
       result.roundNumber,
@@ -409,6 +502,18 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
       drawFrame={drawFrame}
     >
       <div className="review-hit-regions" aria-label={`Round ${result.roundNumber} review controls`}>
+        {hasTweetReview && !hasGoldenFlush ? (
+          <div
+            className="review-scroll-region"
+            style={rectStyle(content, layout)}
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            aria-hidden
+          />
+        ) : null}
         <button className="review-hit-button" type="button" style={rectStyle(quitButton, layout)} onClick={onChangeGame}>
           Quit
         </button>

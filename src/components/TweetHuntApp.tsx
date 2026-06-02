@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import titleAsset from "../../Assets/Sprites/UI/title_v2.png";
+import titleAsset from "../../Assets/Sprites/UI/title_v2.jpg";
 import titleSelectionAsset from "../../Assets/Sprites/UI/UI_title_selection.jpg";
 import welcomePlayAsset from "../../Assets/Sprites/UI/welcome_screen_play.png";
 import welcomeTitleAsset from "../../Assets/Sprites/UI/tweet_hunt_title.png";
@@ -89,6 +89,24 @@ const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
 const TITLE_UNLINK_LABEL = "UNLINK ACCOUNT";
 const TITLE_UNLINK_RECT = { x: 336, y: 616, width: 360, height: 52 };
 const MOBILE_TITLE_UNLINK_RECT = { x: 102, y: 884, width: 336, height: 56 };
+const TITLE_UNLINK_SELECTION_POSITION = { x: 303, y: 626 };
+const MOBILE_TITLE_UNLINK_SELECTION_POSITION = { x: 69, y: 894 };
+
+function drawTitleSelection(
+  ctx: CanvasRenderingContext2D,
+  images: Record<string, HTMLImageElement>,
+  position: { x: number; y: number }
+) {
+  const selection = images.selection;
+  if (selection) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(selection, position.x, position.y, TITLE_SELECTION_SIZE.width, TITLE_SELECTION_SIZE.height);
+    return;
+  }
+
+  drawPixelText(ctx, ">", position.x, position.y - 2, { size: 24, color: "#fff9e8" });
+}
+
 const WELCOME_BIRD_COLUMNS = 4;
 const WELCOME_BIRD_ROWS = 3;
 const WELCOME_BIRD_SIZE = 138;
@@ -138,7 +156,7 @@ const TITLE_MODAL_SPEC_PORTRAIT = {
   buttonGap: 24,
   bodyWidth: 396,
   bodySize: 22,
-  bodyLineHeight: 34,
+  bodyLineHeight: 28,
   bodyWeight: 400,
   titleSize: 32,
   promptSize: 13,
@@ -219,7 +237,7 @@ function drawTitleModal(ctx: CanvasRenderingContext2D, layout: GameplayLayoutPro
   const modal = buildTitleModalLayout(ctx, layout, copy);
   drawArcadeModalScrim(ctx);
   drawArcadeModalPanel(ctx, modal.panel);
-  drawArcadeModalTitle(ctx, copy.title.toUpperCase(), layout.width / 2, modal.titleY, modal.titleSize, copy.titleColor);
+  drawArcadeModalTitle(ctx, copy.title.toUpperCase(), layout.width / 2, modal.titleY, modal.titleSize, copy.titleColor, modal.panel.width - 56);
   drawWrappedUiText(ctx, copy.body, layout.width / 2, modal.bodyY, modal.bodyWidth, modal.bodyLineHeight, {
     size: modal.bodySize,
     color: MODAL_BODY_COLOR,
@@ -412,6 +430,7 @@ export function TweetHuntApp() {
   const [authError, setAuthError] = useState<AuthError>(null);
   const [pendingMode, setPendingMode] = useState<GameMode | null>(null);
   const [activeTitleMode, setActiveTitleMode] = useState<GameMode | null>(null);
+  const [activeTitleUnlink, setActiveTitleUnlink] = useState(false);
   const [roundTweets, setRoundTweets] = useState<TweetCandidate[]>([]);
   const [isLiveTweetRound, setIsLiveTweetRound] = useState(false);
   const [useArcadeFallback, setUseArcadeFallback] = useState(false);
@@ -863,6 +882,9 @@ export function TweetHuntApp() {
             color: "#e79a1b",
             align: "center"
           });
+          if (activeTitleUnlink) {
+            drawTitleSelection(ctx, images, MOBILE_TITLE_UNLINK_SELECTION_POSITION);
+          }
         }
         for (const mode of ["A", "B", "C"] as const) {
           const row = MOBILE_TITLE_MODE_ROWS[mode];
@@ -894,23 +916,19 @@ export function TweetHuntApp() {
           color: "#e79a1b",
           align: "center"
         });
+        if (activeTitleUnlink) {
+          drawTitleSelection(ctx, images, TITLE_UNLINK_SELECTION_POSITION);
+        }
       }
 
       if (titleSelectionMode) {
-        const position = TITLE_SELECTION_POSITIONS[titleSelectionMode];
-        const selection = images.selection;
-        if (selection) {
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(selection, position.x, position.y, TITLE_SELECTION_SIZE.width, TITLE_SELECTION_SIZE.height);
-        } else {
-          drawPixelText(ctx, ">", position.x, position.y - 2, { size: 24, color: "#fff9e8" });
-        }
+        drawTitleSelection(ctx, images, TITLE_SELECTION_POSITIONS[titleSelectionMode]);
       }
       if (activeTitleModal) {
         drawTitleModal(ctx, layout, activeTitleModal);
       }
     },
-    [activeTitleModal, authStatus, layout, titleSelectionMode, titleTopScore]
+    [activeTitleModal, activeTitleUnlink, authStatus, layout, titleSelectionMode, titleTopScore]
   );
 
   function renderIntroBanner() {
@@ -961,9 +979,15 @@ export function TweetHuntApp() {
                 className="title-option title-option-a"
                 type="button"
                 style={canvasRectStyle(layout, titleOptionRects.A)}
-                onPointerEnter={() => setActiveTitleMode("A")}
+                onPointerEnter={() => {
+                  setActiveTitleMode("A");
+                  setActiveTitleUnlink(false);
+                }}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
-                onFocus={() => setActiveTitleMode("A")}
+                onFocus={() => {
+                  setActiveTitleMode("A");
+                  setActiveTitleUnlink(false);
+                }}
                 onBlur={() => setActiveTitleMode((mode) => (mode === "A" ? null : mode))}
                 onClick={() => selectTitleMode("A")}
               >
@@ -973,9 +997,15 @@ export function TweetHuntApp() {
                 className="title-option title-option-b"
                 type="button"
                 style={canvasRectStyle(layout, titleOptionRects.B)}
-                onPointerEnter={() => setActiveTitleMode("B")}
+                onPointerEnter={() => {
+                  setActiveTitleMode("B");
+                  setActiveTitleUnlink(false);
+                }}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
-                onFocus={() => setActiveTitleMode("B")}
+                onFocus={() => {
+                  setActiveTitleMode("B");
+                  setActiveTitleUnlink(false);
+                }}
                 onBlur={() => setActiveTitleMode((mode) => (mode === "B" ? null : mode))}
                 onClick={() => selectTitleMode("B")}
               >
@@ -985,9 +1015,15 @@ export function TweetHuntApp() {
                 className="title-option title-option-c"
                 type="button"
                 style={canvasRectStyle(layout, titleOptionRects.C)}
-                onPointerEnter={() => setActiveTitleMode("C")}
+                onPointerEnter={() => {
+                  setActiveTitleMode("C");
+                  setActiveTitleUnlink(false);
+                }}
                 onPointerLeave={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
-                onFocus={() => setActiveTitleMode("C")}
+                onFocus={() => {
+                  setActiveTitleMode("C");
+                  setActiveTitleUnlink(false);
+                }}
                 onBlur={() => setActiveTitleMode((mode) => (mode === "C" ? null : mode))}
                 onClick={() => selectTitleMode("C")}
               >
@@ -999,6 +1035,16 @@ export function TweetHuntApp() {
                   type="button"
                   style={canvasRectStyle(layout, titleUnlinkRect)}
                   aria-label={`Unlink account ${linkedAccountLabel}`}
+                  onPointerEnter={() => {
+                    setActiveTitleUnlink(true);
+                    setActiveTitleMode(null);
+                  }}
+                  onPointerLeave={() => setActiveTitleUnlink(false)}
+                  onFocus={() => {
+                    setActiveTitleUnlink(true);
+                    setActiveTitleMode(null);
+                  }}
+                  onBlur={() => setActiveTitleUnlink(false)}
                   onClick={requestUnlinkAuthorization}
                 >
                   {TITLE_UNLINK_LABEL}

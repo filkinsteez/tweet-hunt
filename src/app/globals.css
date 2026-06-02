@@ -268,6 +268,21 @@ button {
   border-radius: 7px;
 }
 
+/* Clean presentation: drop the TV desk photo and show the game on a full 4:3 screen. */
+.crt-cabinet.crt-no-cabinet {
+  aspect-ratio: 4 / 3;
+  background: #02030a;
+  border: 3px solid var(--stroke);
+  border-radius: 10px;
+}
+
+.crt-cabinet.crt-no-cabinet .crt-screen {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 7px;
+}
+
 .crt-screen {
   position: absolute;
   left: 12.2%;
@@ -357,10 +372,13 @@ button {
 .game-canvas {
   width: 100%;
   height: 100%;
-  aspect-ratio: 4 / 3;
   display: block;
   image-rendering: pixelated;
   background: var(--sky);
+}
+
+.crt-screen .game-canvas {
+  aspect-ratio: unset;
 }
 
 .game-source-canvas,
@@ -397,6 +415,31 @@ button {
 .crt-crisp-screen .crt-screen::before,
 .crt-crisp-screen .crt-screen::after {
   display: none;
+}
+
+@media (min-width: 761px) and (pointer: fine) {
+  .game-stage {
+    width: min(1280px, calc(100vw - 48px), calc(100dvh - 48px));
+  }
+
+  .game-shell-with-banner .game-stage {
+    width: min(1280px, calc(100vw - 48px), calc(100dvh - 200px));
+  }
+
+  .crt-cabinet.layout-landscape.crt-cabinet-synced {
+    aspect-ratio: 1 / 1;
+    background-size: cover;
+    background-position: center center;
+  }
+
+  /* Clean 4:3 game can use more of the viewport height than the square cabinet. */
+  .game-stage:has(.crt-no-cabinet) {
+    width: min(1280px, calc(100vw - 48px), calc((100dvh - 48px) * 4 / 3));
+  }
+
+  .game-shell-with-banner .game-stage:has(.crt-no-cabinet) {
+    width: min(1280px, calc(100vw - 48px), calc((100dvh - 200px) * 4 / 3));
+  }
 }
 
 .screen-reader-only {
@@ -548,6 +591,19 @@ button {
   position: absolute;
   inset: 0;
   z-index: 5;
+}
+
+.review-scroll-region {
+  position: absolute;
+  z-index: 4;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.review-scroll-region:active {
+  cursor: grabbing;
 }
 
 .review-hit-button {
@@ -732,40 +788,57 @@ button {
   html,
   body {
     overscroll-behavior: none;
+    height: 100%;
+    overflow: hidden;
   }
 
   .game-shell {
     width: 100%;
     min-height: 100dvh;
+    height: 100dvh;
+    padding: 0;
+    justify-content: stretch;
+    align-items: stretch;
+    gap: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .game-stage,
+  .game-shell-with-banner .game-stage,
+  .game-stage:has(.layout-portrait),
+  .game-shell-with-banner .game-stage:has(.layout-portrait) {
+    width: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .game-stage > .canvas-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .game-shell-with-banner {
+    justify-content: flex-start;
     padding:
       max(6px, env(safe-area-inset-top))
       max(6px, env(safe-area-inset-right))
       max(8px, env(safe-area-inset-bottom))
       max(6px, env(safe-area-inset-left));
-    justify-content: center;
     gap: 8px;
   }
 
-  .game-stage,
-  .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc((100dvh - 24px) * 4 / 3));
-  }
-
-  .game-stage:has(.layout-portrait),
+  .game-shell-with-banner .game-stage,
   .game-shell-with-banner .game-stage:has(.layout-portrait) {
-    width: min(calc(100vw - 12px), calc((100dvh - 18px) * 9 / 16));
-  }
-
-  .game-shell-with-banner {
-    justify-content: flex-start;
-  }
-
-  .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc((100dvh - 104px) * 4 / 3));
-  }
-
-  .game-shell-with-banner .game-stage:has(.layout-portrait) {
-    width: min(calc(100vw - 12px), calc((100dvh - 94px) * 9 / 16));
+    width: 100%;
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .intro-banner {
@@ -781,18 +854,28 @@ button {
     font-size: 11px;
   }
 
-  .crt-cabinet {
+  .crt-cabinet,
+  .crt-cabinet.layout-portrait {
+    aspect-ratio: unset;
     background: #02030a;
-    border: 3px solid var(--stroke);
-    border-radius: 10px;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .crt-cabinet.layout-portrait .crt-screen {
+    border-radius: 0;
   }
 
   .crt-screen {
     inset: 0;
     width: 100%;
     height: 100%;
-    border-radius: 7px;
+    border-radius: 0;
     touch-action: none;
+  }
+
+  .game-canvas {
+    aspect-ratio: unset;
   }
 
   .play-crt,
@@ -825,21 +908,11 @@ button {
 
 @media (max-width: 760px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape) {
   .game-stage,
-  .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc(100dvh - 18px));
-  }
-
+  .game-shell-with-banner .game-stage,
   .game-stage:has(.layout-portrait),
   .game-shell-with-banner .game-stage:has(.layout-portrait) {
-    width: min(calc(100vw - 12px), calc((100dvh - 18px) * 9 / 16));
-  }
-
-  .game-shell-with-banner .game-stage {
-    width: min(calc(100vw - 12px), calc(100dvh - 78px));
-  }
-
-  .game-shell-with-banner .game-stage:has(.layout-portrait) {
-    width: min(calc(100vw - 12px), calc((100dvh - 78px) * 9 / 16));
+    width: 100%;
+    height: 100%;
   }
 
   .intro-banner {

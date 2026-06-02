@@ -28,7 +28,7 @@ import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
 import ducksHitAtlasAsset from "../../Assets/Sprites/UI/UI_ducks_hit_atlas.jpg";
 import roundAsset from "../../Assets/Sprites/UI/UI_round.jpg";
 import roundAtlasAsset from "../../Assets/Sprites/UI/UI_round_atlas.jpg";
-import scoreAsset from "../../Assets/Sprites/UI/UI_score.jpg";
+import scoreAsset from "../../Assets/Sprites/UI/UI_score.png";
 import scoreAtlasAsset from "../../Assets/Sprites/UI/UI_score_atlas.jpg";
 import shotsAsset from "../../Assets/Sprites/UI/UI_shots.jpg";
 import {
@@ -86,7 +86,9 @@ import {
 import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import { gameAudio, type GameSoundKey } from "@/game/audio";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
+import { SHOW_CRT_CABINET } from "@/game/presentation";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
+import { useCrtScreenLayout } from "@/hooks/useCrtScreenLayout";
 import {
   clearScene,
   drawClayEnvironment,
@@ -1604,6 +1606,7 @@ function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, 
 
 export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit, presentation = "crt", onSourceCanvasReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cabinetRef = useRef<HTMLDivElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -1641,7 +1644,10 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const [paused, setPaused] = useState(false);
   const layout = useGameplayLayout();
-  const useCrtPresentation = presentation === "crt";
+  const useCrtPresentation = presentation === "crt" && SHOW_CRT_CABINET;
+  const syncCrtScreen = useCrtPresentation && !crtUnavailable && !isPortraitLayout(layout);
+  const crtScreenStyle = useCrtScreenLayout(cabinetRef, syncCrtScreen);
+  const noCabinet = !SHOW_CRT_CABINET && !isPortraitLayout(layout);
 
   useEffect(() => {
     mouseRef.current = { x: layout.width / 2, y: layout.height / 2 };
@@ -2498,14 +2504,17 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   }
 
   const crtStyle = { "--crt-art": `url(${crtAsset.src})` } as CSSProperties;
+  const syncedCabinetClass = syncCrtScreen ? " crt-cabinet-synced" : "";
+  const noCabinetClass = noCabinet ? " crt-no-cabinet" : "";
 
   return (
     <div
-      className={`canvas-wrap crt-cabinet play-crt ${layout.className}${paused ? " play-paused" : ""}${!useCrtPresentation || crtUnavailable || isPortraitLayout(layout) ? " crt-fallback" : ""}`}
+      ref={cabinetRef}
+      className={`canvas-wrap crt-cabinet play-crt ${layout.className}${syncedCabinetClass}${noCabinetClass}${paused ? " play-paused" : ""}${!useCrtPresentation || crtUnavailable || isPortraitLayout(layout) ? " crt-fallback" : ""}`}
       style={crtStyle}
       aria-label={`${modeLabel(mode)} playfield`}
     >
-      <div className="crt-screen">
+      <div className="crt-screen" style={crtScreenStyle}>
         <canvas
           ref={canvasRef}
           className="game-canvas game-source-canvas"
