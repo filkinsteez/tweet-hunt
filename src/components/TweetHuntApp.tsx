@@ -725,25 +725,21 @@ export function TweetHuntApp() {
   const titleSelectionMode = pendingMode ?? activeTitleMode;
   const linkedAccountLabel = handle ? `@${handle}` : "your linked X account";
   const modalTitle =
-    isLoadingTweets ? "Loading Tweets" : authStatus === "authorized" ? "Live Tweet Mode" : authStatus === "unknown" ? "Checking Connection" : "Connect Account";
+    authStatus === "authorized" ? "Live Tweet Mode" : authStatus === "unknown" ? "Checking Connection" : "Connect Account";
   const modalBody =
-    isLoadingTweets
-      ? "Loading tweet candidates from your linked X account..."
-      : authStatus === "authorized"
-        ? `Connected to ${linkedAccountLabel}. Shooting a bird will immediately delete a random tweet. Ready to hunt?`
+    authStatus === "authorized"
+      ? `Connected to ${linkedAccountLabel}. Shooting a bird will immediately delete a random tweet. Ready to hunt?`
       : authStatus === "unknown"
         ? "Checking your account connection..."
         : "Connect your X account to load tweet candidates for this round. Nothing is deleted when you connect.";
   const modalPrimaryLabel =
-    isLoadingTweets
-      ? "Loading..."
-      : authStatus === "authorized"
-        ? "Let's hunt"
+    authStatus === "authorized"
+      ? "Let's hunt"
       : authStatus === "unknown"
         ? "Checking..."
         : "Connect X";
   const modalPrimaryDisabled = authStatus === "unknown" || isLoadingTweets;
-  const activeTitleModal = pendingMode
+  const activeTitleModal = pendingMode && !isLoadingTweets
     ? {
         title: modalTitle,
         titleColor: authStatus === "authorized" ? "#ff5c51" : "#e79a1b",
