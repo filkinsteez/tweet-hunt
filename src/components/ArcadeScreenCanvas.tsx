@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import crtAsset from "../../Assets/CRT/crt_cold.jpg";
-import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
+import { getLoadedImage, isPixelFontLoaded, loadImage, loadPixelFont } from "@/game/assetCache";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
 import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
@@ -30,11 +30,16 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
   const cabinetRef = useRef<HTMLDivElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const crtRendererRef = useRef<CrtRenderer | null>(null);
-  const imagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const imagesRef = useRef<Record<string, HTMLImageElement>>(
+    Object.fromEntries(Object.entries(images).flatMap(([key, src]) => {
+      const image = getLoadedImage(src);
+      return image ? [[key, image]] : [];
+    }))
+  );
   const rafRef = useRef<number | null>(null);
   const mouseRef = useRef({ x: layout.width / 2, y: layout.height / 2 });
-  const [assetReady, setAssetReady] = useState(false);
-  const [fontReady, setFontReady] = useState(false);
+  const [assetReady, setAssetReady] = useState(() => Object.values(images).every((src) => Boolean(getLoadedImage(src))));
+  const [fontReady, setFontReady] = useState(() => isPixelFontLoaded());
   const [crtUnavailable, setCrtUnavailable] = useState(false);
   const isPortrait = layout.id === "portrait";
   const useCrt = presentation === "crt" && !isPortrait && SHOW_CRT_CABINET;
@@ -75,18 +80,9 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
   useEffect(() => {
     let cancelled = false;
 
-    if (!("fonts" in document)) {
-      setFontReady(true);
-      return undefined;
-    }
-
-    document.fonts
-      .load("16px 'Press Start 2P'")
-      .then(() => document.fonts.ready)
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setFontReady(true);
-      });
+    loadPixelFont().finally(() => {
+      if (!cancelled) setFontReady(true);
+    });
 
     return () => {
       cancelled = true;
@@ -102,29 +98,41 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
 
     let loaded = 0;
     let cancelled = false;
-    const imageElements = entries.map(([key, src]) => {
-      const image = new Image();
-      image.onload = () => {
-        if (cancelled) return;
-        imagesRef.current[key] = image;
-        loaded += 1;
-        if (loaded === entries.length) setAssetReady(true);
-      };
-      image.onerror = () => {
-        if (cancelled) return;
-        loaded += 1;
-        if (loaded === entries.length) setAssetReady(true);
-      };
-      image.src = src;
-      return image;
-    });
+    const cachedImages: Record<string, HTMLImageElement> = {};
+    const missingEntries: Array<[string, string]> = [];
+    for (const [key, src] of entries) {
+      const image = getLoadedImage(src);
+      if (image) {
+        cachedImages[key] = image;
+      } else {
+        missingEntries.push([key, src]);
+      }
+    }
+
+    imagesRef.current = cachedImages;
+    loaded = entries.length - missingEntries.length;
+    if (loaded === entries.length) {
+      setAssetReady(true);
+      return undefined;
+    }
+
+    const imagePromises = missingEntries.map(([key, src]) =>
+      loadImage(src)
+        .then((image) => {
+          if (cancelled) return;
+          imagesRef.current[key] = image;
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (cancelled) return;
+          loaded += 1;
+          if (loaded === entries.length) setAssetReady(true);
+        })
+    );
 
     return () => {
       cancelled = true;
-      for (const image of imageElements) {
-        image.onload = null;
-        image.onerror = null;
-      }
+      void imagePromises;
     };
   }, [images]);
 
@@ -183,7 +191,6 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
           aria-hidden={crtUnavailable}
         />
         {children}
-        <CanvasLoadingOverlay visible={!assetReady || !fontReady} />
       </div>
     </div>
   );

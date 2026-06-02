@@ -57,6 +57,7 @@ button {
 }
 
 .game-shell {
+  position: relative;
   min-height: 100vh;
   min-height: 100dvh;
   padding: clamp(8px, 2vmin, 16px);
@@ -70,6 +71,12 @@ button {
 .game-stage {
   position: relative;
   width: min(1120px, calc(100vw - 32px), calc(100dvh - 40px));
+}
+
+.app-loading-stage {
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #000;
 }
 
 .game-shell-with-banner .game-stage {
@@ -374,7 +381,7 @@ button {
   height: 100%;
   display: block;
   image-rendering: pixelated;
-  background: var(--sky);
+  background: #000;
 }
 
 .crt-screen .game-canvas {
@@ -420,11 +427,10 @@ button {
 .canvas-loading {
   position: absolute;
   inset: 0;
-  z-index: 15;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   background: #000000;
   color: var(--accent);
   font-family: var(--tweet-font);
@@ -434,7 +440,6 @@ button {
   transition: opacity 0.52s ease;
 }
 
-/* Stage 2: the black panel fades out, revealing (fading in) the play screen. */
 .canvas-loading.is-screen-out {
   opacity: 0;
   pointer-events: none;
@@ -442,62 +447,19 @@ button {
 
 .canvas-loading-label {
   font-size: clamp(10px, 2.6vw, 18px);
-  animation: canvas-loading-pulse 1.1s ease-in-out infinite;
-  transition: opacity 0.28s ease;
-}
-
-/* Stage 1: the text fades out first while the panel stays solid black. */
-.canvas-loading.is-text-out .canvas-loading-label,
-.canvas-loading.is-screen-out .canvas-loading-label,
-.canvas-loading.is-text-out .canvas-loading-dots,
-.canvas-loading.is-screen-out .canvas-loading-dots {
-  animation: none;
-  opacity: 0;
-}
-
-.canvas-loading.is-text-out .canvas-loading-dots::after,
-.canvas-loading.is-screen-out .canvas-loading-dots::after {
-  content: "";
-  animation: none;
-}
-
-.canvas-loading-dots {
-  display: inline-block;
-  width: 1.6em;
-  font-size: clamp(10px, 2.6vw, 18px);
-  text-align: left;
-  transition: opacity 0.28s ease;
-}
-
-.canvas-loading-dots::after {
-  content: "";
-  animation: canvas-loading-dots 1.2s steps(1, end) infinite;
-}
-
-@keyframes canvas-loading-dots {
-  0% { content: ""; }
-  25% { content: "."; }
-  50% { content: ".."; }
-  75% { content: "..."; }
-  100% { content: ""; }
+  animation: canvas-loading-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes canvas-loading-pulse {
-  0%, 100% { opacity: 0.78; }
+  0%, 100% { opacity: 0.72; }
   50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-loading,
-  .canvas-loading-label,
-  .canvas-loading-dots {
+  .canvas-loading-label {
     animation: none;
     transition-duration: 0.12s;
-  }
-
-  .canvas-loading-dots::after {
-    content: "...";
-    animation: none;
   }
 }
 

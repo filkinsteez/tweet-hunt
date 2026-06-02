@@ -85,12 +85,12 @@ import {
 } from "@/game/duckHuntMechanics";
 import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import { gameAudio, type GameSoundKey } from "@/game/audio";
+import { getLoadedImage, isPixelFontLoaded, loadImage, loadPixelFont, TWEET_HUNT_SHEET_SRC } from "@/game/assetCache";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { SHOW_CRT_CABINET } from "@/game/presentation";
 import { ENABLE_GOLDEN_DUCK_MODE } from "@/game/featureFlags";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 import { useCrtScreenLayout } from "@/hooks/useCrtScreenLayout";
-import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import {
   clearScene,
   drawClayEnvironment,
@@ -269,6 +269,26 @@ function duckGroundSoundY(layout: GameplayLayoutProfile) {
 
 function uiScaleForLayout(layout: GameplayLayoutProfile) {
   return isPortraitLayout(layout) ? PORTRAIT_UI_SCALE : UI_SCALE;
+}
+
+function loadCachedImageInto(src: string, assign: (image: HTMLImageElement | null) => void) {
+  const cached = getLoadedImage(src);
+  if (cached) {
+    assign(cached);
+    return () => assign(null);
+  }
+
+  let cancelled = false;
+  loadImage(src)
+    .then((image) => {
+      if (!cancelled) assign(image);
+    })
+    .catch(() => undefined);
+
+  return () => {
+    cancelled = true;
+    assign(null);
+  };
 }
 
 function clayRenderScaleForLayout(layout: GameplayLayoutProfile) {
@@ -1666,8 +1686,8 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
 
-  const [assetReady, setAssetReady] = useState(false);
-  const [fontReady, setFontReady] = useState(false);
+  const [assetReady, setAssetReady] = useState(() => Boolean(getLoadedImage(TWEET_HUNT_SHEET_SRC)));
+  const [fontReady, setFontReady] = useState(() => isPixelFontLoaded());
   const [microReveal, setMicroReveal] = useState<MicroReveal>(null);
   const microRevealRef = useRef<MicroReveal>(null);
   const [crtUnavailable, setCrtUnavailable] = useState(false);
@@ -1717,18 +1737,9 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   useEffect(() => {
     let cancelled = false;
 
-    if (!("fonts" in document)) {
-      setFontReady(true);
-      return undefined;
-    }
-
-    document.fonts
-      .load("16px 'Press Start 2P'")
-      .then(() => document.fonts.ready)
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setFontReady(true);
-      });
+    loadPixelFont().finally(() => {
+      if (!cancelled) setFontReady(true);
+    });
 
     return () => {
       cancelled = true;
@@ -1811,79 +1822,58 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   }, [setPausedState]);
 
   useEffect(() => {
-    const image = new Image();
-    image.src = "/sprites/tweet_hunt_sheet.png";
-    image.onload = () => {
+    let cancelled = false;
+    const cached = getLoadedImage(TWEET_HUNT_SHEET_SRC);
+    if (cached) {
+      imageRef.current = cached;
+      setAssetReady(true);
+      return () => {
+        imageRef.current = null;
+      };
+    }
+
+    loadImage(TWEET_HUNT_SHEET_SRC).then((image) => {
+      if (cancelled) return;
       imageRef.current = image;
       setAssetReady(true);
-    };
-  }, []);
-
-  useEffect(() => {
-    const image = new Image();
-    image.onload = () => {
-      flyFramesRef.current = { image, columns: 4, rows: 3 };
-    };
-    image.src = chatGptBirdFlyAsset.src;
+    });
 
     return () => {
-      image.onload = null;
-      flyFramesRef.current = null;
+      cancelled = true;
+      imageRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const image = new Image();
-    image.onload = () => {
-      goldenFlyFramesRef.current = { image, columns: 4, rows: 3 };
-    };
-    image.src = chatGptGoldenBirdFlyAsset.src;
-
-    return () => {
-      image.onload = null;
-      goldenFlyFramesRef.current = null;
-    };
+    return loadCachedImageInto(chatGptBirdFlyAsset.src, (image) => {
+      flyFramesRef.current = image ? { image, columns: 4, rows: 3 } : null;
+    });
   }, []);
 
   useEffect(() => {
-    const image = new Image();
-    image.onload = () => {
+    return loadCachedImageInto(chatGptGoldenBirdFlyAsset.src, (image) => {
+      goldenFlyFramesRef.current = image ? { image, columns: 4, rows: 3 } : null;
+    });
+  }, []);
+
+  useEffect(() => {
+    return loadCachedImageInto(birdShotAsset.src, (image) => {
       birdShotImageRef.current = image;
-    };
-    image.src = birdShotAsset.src;
-
-    return () => {
-      image.onload = null;
-      birdShotImageRef.current = null;
-    };
+    });
   }, []);
 
   useEffect(() => {
-    const image = new Image();
-    image.onload = () => {
+    return loadCachedImageInto(goldenBirdShotAsset.src, (image) => {
       goldenBirdShotImageRef.current = image;
-    };
-    image.src = goldenBirdShotAsset.src;
-
-    return () => {
-      image.onload = null;
-      goldenBirdShotImageRef.current = null;
-    };
+    });
   }, []);
 
   useEffect(() => {
-    const image = new Image();
-    image.onload = () => {
-      clayTargetAtlasRef.current = createTransparentCanvas(image, [254, 211, 186], [
-        { from: [72, 205, 222], to: [72, 205, 222, 0] }
-      ]);
-    };
-    image.src = clayTargetAtlasAsset.src;
-
-    return () => {
-      image.onload = null;
-      clayTargetAtlasRef.current = null;
-    };
+    return loadCachedImageInto(clayTargetAtlasAsset.src, (image) => {
+      clayTargetAtlasRef.current = image
+        ? createTransparentCanvas(image, [254, 211, 186], [{ from: [72, 205, 222], to: [72, 205, 222, 0] }])
+        : null;
+    });
   }, []);
 
   useEffect(() => {
@@ -1902,163 +1892,95 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       ["clayRound", clayRoundAsset.src],
       ["clayScore", clayScoreAsset.src]
     ];
-    const images = assets.map(([key, src]) => {
-      const image = new Image();
-      image.src = src;
-      image.onload = () => {
-        uiImagesRef.current[key] = image;
-      };
-      return image;
+    let cancelled = false;
+    uiImagesRef.current = {};
+
+    for (const [key, src] of assets) {
+      const cached = getLoadedImage(src);
+      if (cached) uiImagesRef.current[key] = cached;
+    }
+
+    const promises = assets.map(([key, src]) => {
+      if (uiImagesRef.current[key]) return Promise.resolve();
+      return loadImage(src)
+        .then((image) => {
+          if (!cancelled) uiImagesRef.current[key] = image;
+        })
+        .catch(() => undefined);
     });
 
     return () => {
-      for (const image of images) image.onload = null;
+      cancelled = true;
+      void promises;
       uiImagesRef.current = {};
     };
   }, []);
 
 
   useEffect(() => {
-    const backgroundImage = new Image();
-    backgroundImage.src = backgroundAsset.src;
-    backgroundImage.onload = () => {
-      backgroundImageRef.current = backgroundImage;
-    };
-
-    return () => {
-      backgroundImage.onload = null;
-      backgroundImageRef.current = null;
-    };
+    return loadCachedImageInto(backgroundAsset.src, (image) => {
+      backgroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const portraitBackgroundImage = new Image();
-    portraitBackgroundImage.src = portraitBackgroundAsset.src;
-    portraitBackgroundImage.onload = () => {
-      portraitBackgroundImageRef.current = portraitBackgroundImage;
-    };
-
-    return () => {
-      portraitBackgroundImage.onload = null;
-      portraitBackgroundImageRef.current = null;
-    };
+    return loadCachedImageInto(portraitBackgroundAsset.src, (image) => {
+      portraitBackgroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const portraitGroundImage = new Image();
-    portraitGroundImage.src = portraitGroundAsset.src;
-    portraitGroundImage.onload = () => {
-      portraitGroundImageRef.current = portraitGroundImage;
-    };
-
-    return () => {
-      portraitGroundImage.onload = null;
-      portraitGroundImageRef.current = null;
-    };
+    return loadCachedImageInto(portraitGroundAsset.src, (image) => {
+      portraitGroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const portraitGrassImage = new Image();
-    portraitGrassImage.src = portraitGrassAsset.src;
-    portraitGrassImage.onload = () => {
-      portraitGrassImageRef.current = portraitGrassImage;
-    };
-
-    return () => {
-      portraitGrassImage.onload = null;
-      portraitGrassImageRef.current = null;
-    };
+    return loadCachedImageInto(portraitGrassAsset.src, (image) => {
+      portraitGrassImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const portraitTreeImage = new Image();
-    portraitTreeImage.src = portraitTreeAsset.src;
-    portraitTreeImage.onload = () => {
-      portraitTreeImageRef.current = portraitTreeImage;
-    };
-
-    return () => {
-      portraitTreeImage.onload = null;
-      portraitTreeImageRef.current = null;
-    };
+    return loadCachedImageInto(portraitTreeAsset.src, (image) => {
+      portraitTreeImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const clayBackgroundImage = new Image();
-    clayBackgroundImage.src = clayBackgroundAsset.src;
-    clayBackgroundImage.onload = () => {
-      clayBackgroundImageRef.current = clayBackgroundImage;
-    };
-
-    return () => {
-      clayBackgroundImage.onload = null;
-      clayBackgroundImageRef.current = null;
-    };
+    return loadCachedImageInto(clayBackgroundAsset.src, (image) => {
+      clayBackgroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const clayPortraitBackgroundImage = new Image();
-    clayPortraitBackgroundImage.src = clayPortraitBackgroundAsset.src;
-    clayPortraitBackgroundImage.onload = () => {
-      clayPortraitBackgroundImageRef.current = clayPortraitBackgroundImage;
-    };
-
-    return () => {
-      clayPortraitBackgroundImage.onload = null;
-      clayPortraitBackgroundImageRef.current = null;
-    };
+    return loadCachedImageInto(clayPortraitBackgroundAsset.src, (image) => {
+      clayPortraitBackgroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const dogOneBirdImage = new Image();
-    dogOneBirdImage.src = dogOneBirdAsset.src;
-    dogOneBirdImage.onload = () => {
-      dogOneBirdImageRef.current = dogOneBirdImage;
-    };
-
-    return () => {
-      dogOneBirdImage.onload = null;
-      dogOneBirdImageRef.current = null;
-    };
+    return loadCachedImageInto(dogOneBirdAsset.src, (image) => {
+      dogOneBirdImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const midgroundImage = new Image();
-    midgroundImage.src = midgroundAsset.src;
-    midgroundImage.onload = () => {
-      midgroundImageRef.current = midgroundImage;
-    };
-
-    return () => {
-      midgroundImage.onload = null;
-      midgroundImageRef.current = null;
-    };
+    return loadCachedImageInto(midgroundAsset.src, (image) => {
+      midgroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const treeImage = new Image();
-    treeImage.src = treeAsset.src;
-    treeImage.onload = () => {
-      treeImageRef.current = treeImage;
-    };
-
-    return () => {
-      treeImage.onload = null;
-      treeImageRef.current = null;
-    };
+    return loadCachedImageInto(treeAsset.src, (image) => {
+      treeImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
-    const foregroundImage = new Image();
-    foregroundImage.src = foregroundAsset.src;
-    foregroundImage.onload = () => {
-      foregroundImageRef.current = foregroundImage;
-    };
-
-    return () => {
-      foregroundImage.onload = null;
-      foregroundImageRef.current = null;
-    };
+    return loadCachedImageInto(foregroundAsset.src, (image) => {
+      foregroundImageRef.current = image;
+    });
   }, []);
 
   useEffect(() => {
@@ -2535,7 +2457,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   }
 
   function handleQuit() {
-    setPausedState(false);
+    pausedRef.current = false;
+    pauseStartedAtRef.current = null;
+    stateRef.current = null;
+    gameAudio.stopAll();
+    setPaused(false);
     onQuit();
   }
 
@@ -2568,7 +2494,6 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
           onPointerDown={handleCanvasPointerDown}
           aria-hidden={crtUnavailable}
         />
-        <CanvasLoadingOverlay visible={!assetReady || !fontReady} />
         <div className="screen-reader-only" aria-live="polite">
           {paused ? "Paused. Press Escape to resume, or click Resume or Quit on the game screen." : microReveal?.text ?? ""}
         </div>

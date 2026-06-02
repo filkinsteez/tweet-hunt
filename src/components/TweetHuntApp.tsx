@@ -8,7 +8,9 @@ import welcomeTitleAsset from "../../Assets/Sprites/UI/tweet_hunt_title.png";
 import chatGptBirdFlyAsset from "../../Assets/Sprites/Bird/ChatGPT Sprite/chatgpt_birdsprite_fly.png";
 import { ArcadeRoundReview } from "./ArcadeRoundReview";
 import { ArcadeScreenCanvas } from "./ArcadeScreenCanvas";
+import { CanvasLoadingOverlay } from "./CanvasLoadingOverlay";
 import { GameCanvas } from "./GameCanvas";
+import { preloadInitialGameAssets } from "@/game/assetCache";
 import { TARGETS_PER_ROUND } from "@/game/constants";
 import { gameAudio } from "@/game/audio";
 import { loadHighScores, mergeBestScore } from "@/game/highScores";
@@ -436,6 +438,7 @@ export function TweetHuntApp() {
   const [useArcadeFallback, setUseArcadeFallback] = useState(false);
   const [tweetLoadError, setTweetLoadError] = useState<string | null>(null);
   const [isLoadingTweets, setIsLoadingTweets] = useState(false);
+  const [initialAssetsReady, setInitialAssetsReady] = useState(false);
   const [highScores, setHighScores] = useState<Record<GameMode, number>>({ A: 0, B: 0, C: 0 });
   const [showUnlinkModal, setShowUnlinkModal] = useState(false);
   const welcomeBirdsRef = useRef<WelcomeBirdRuntime[]>([]);
@@ -467,6 +470,18 @@ export function TweetHuntApp() {
 
   useEffect(() => {
     setHighScores(loadHighScores());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    preloadInitialGameAssets().finally(() => {
+      if (!cancelled) setInitialAssetsReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -942,6 +957,16 @@ export function TweetHuntApp() {
     );
   }
 
+  if (!initialAssetsReady) {
+    return (
+      <main className={`game-shell${mobileScreenClass}`}>
+        <div className="game-stage app-loading-stage">
+          <CanvasLoadingOverlay visible label="LOADING" />
+        </div>
+      </main>
+    );
+  }
+
   if (stage === "welcome") {
     return (
       <main className="game-shell">
@@ -968,6 +993,7 @@ export function TweetHuntApp() {
     return (
       <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
+        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
         <div className="game-stage">
           <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
             <div className="title-hit-regions" aria-label="Choose a game mode or manage linked account">
@@ -1100,6 +1126,7 @@ export function TweetHuntApp() {
     return (
       <main className={`game-shell${showIntroBanner ? " game-shell-with-banner" : ""}`}>
         {showIntroBanner ? renderIntroBanner() : null}
+        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
         <div className="game-stage">
           <GameCanvas
             mode={config.mode}
@@ -1116,6 +1143,7 @@ export function TweetHuntApp() {
 
   return (
     <main className="game-shell">
+      <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
       <div className="game-stage">
         {stage === "review" && lastResult ? (
           <ArcadeRoundReview
