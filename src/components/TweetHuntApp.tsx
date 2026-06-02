@@ -961,7 +961,7 @@ export function TweetHuntApp() {
     return (
       <main className={`game-shell${mobileScreenClass}`}>
         <div className="game-stage app-loading-stage">
-          <CanvasLoadingOverlay visible label="LOADING" />
+          <CanvasLoadingOverlay visible label="LOADING..." />
         </div>
       </main>
     );

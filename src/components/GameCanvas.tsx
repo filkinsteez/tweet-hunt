@@ -1685,6 +1685,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
   const pauseStartedAtRef = useRef<number | null>(null);
   const onRoundEndRef = useRef(onRoundEnd);
   const tweetsRef = useRef(tweets);
+  const introAudioSignatureRef = useRef<string | null>(null);
 
   const [assetReady, setAssetReady] = useState(() => Boolean(getLoadedImage(TWEET_HUNT_SHEET_SRC)));
   const [fontReady, setFontReady] = useState(() => isPixelFontLoaded());
@@ -1988,7 +1989,11 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     const now = performance.now();
     const targetLimit = isLiveTweetRound ? Math.min(Math.max(tweetsRef.current.length, 1), TARGETS_PER_ROUND) : TARGETS_PER_ROUND;
     const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound, layout);
-    gameAudio.play(mode === "C" ? "clayShootingIntro" : "gameStart", 0.78);
+    const introAudioSignature = `${mode}:${roundNumber}:${isLiveTweetRound ? "live" : "arcade"}:${targetLimit}`;
+    if (introAudioSignatureRef.current !== introAudioSignature) {
+      introAudioSignatureRef.current = introAudioSignature;
+      gameAudio.play(mode === "C" ? "clayShootingIntro" : "gameStart", 0.78);
+    }
     state.phase = "intro";
     state.phaseStartedAtMs = now;
     pausedRef.current = false;

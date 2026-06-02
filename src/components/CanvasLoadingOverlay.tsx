@@ -9,7 +9,7 @@ type Props = {
 
 type Phase = "show" | "screen-out" | "done";
 
-export function CanvasLoadingOverlay({ visible, label = "LOADING" }: Props) {
+export function CanvasLoadingOverlay({ visible, label = "LOADING..." }: Props) {
   const [phase, setPhase] = useState<Phase>(() => (visible ? "show" : "done"));
 
   useEffect(() => {
