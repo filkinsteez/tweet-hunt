@@ -87,6 +87,7 @@ import { CRT_WARP_X, CRT_WARP_Y, CrtRenderer } from "@/game/crtRenderer";
 import { gameAudio, type GameSoundKey } from "@/game/audio";
 import { LANDSCAPE_LAYOUT, isPortraitLayout, type GameplayLayoutProfile } from "@/game/layout";
 import { SHOW_CRT_CABINET } from "@/game/presentation";
+import { ENABLE_GOLDEN_DUCK_MODE } from "@/game/featureFlags";
 import { useGameplayLayout } from "@/hooks/useGameplayLayout";
 import { useCrtScreenLayout } from "@/hooks/useCrtScreenLayout";
 import {
@@ -501,7 +502,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     dogBarkWindowStarted: false,
     dogBarkCounterFrames: DOG_BARK_INITIAL_FRAMES,
     scoreReveals: [],
-    duckCallStatus: mode === "A" && isLiveTweetRound ? "ready" : "disabled",
+    duckCallStatus: ENABLE_GOLDEN_DUCK_MODE && mode === "A" && isLiveTweetRound ? "ready" : "disabled",
     duckCallTriggeredAtMs: undefined,
     goldenSpawnAtMs: undefined,
     goldenTargetId: undefined,
