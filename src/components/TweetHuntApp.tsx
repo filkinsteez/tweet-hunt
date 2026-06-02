@@ -730,7 +730,7 @@ export function TweetHuntApp() {
     isLoadingTweets
       ? "Loading tweet candidates from your linked X account..."
       : authStatus === "authorized"
-        ? `Connected to ${linkedAccountLabel}. Hit a real tweet bird to delete it immediately. Misses escape. Ready to hunt?`
+        ? `Connected to ${linkedAccountLabel}. Shooting a bird will immediately delete a random tweet. Ready to hunt?`
       : authStatus === "unknown"
         ? "Checking your account connection..."
         : "Connect your X account to load tweet candidates for this round. Nothing is deleted when you connect.";
