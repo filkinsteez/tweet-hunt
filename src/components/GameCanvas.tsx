@@ -24,7 +24,7 @@ import clayTargetAtlasAsset from "../../Assets/Sprites/Clay/clay_target_atlas.pn
 import dogOneBirdAsset from "../../Assets/Sprites/Environment/dog_1bird.png";
 import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
 import treeAsset from "../../Assets/Sprites/Environment/tree.png";
-import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
+import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.png";
 import ducksHitAtlasAsset from "../../Assets/Sprites/UI/UI_ducks_hit_atlas.jpg";
 import roundAsset from "../../Assets/Sprites/UI/UI_round.jpg";
 import roundAtlasAsset from "../../Assets/Sprites/UI/UI_round_atlas.jpg";

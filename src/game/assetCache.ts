@@ -21,7 +21,7 @@ import portraitGroundAsset from "../../Assets/Sprites/Environment/ground_9x16.pn
 import portraitTreeAsset from "../../Assets/Sprites/Environment/tree_9x16.png";
 import midgroundAsset from "../../Assets/Sprites/Environment/midground.png";
 import treeAsset from "../../Assets/Sprites/Environment/tree.png";
-import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.jpg";
+import ducksHitAsset from "../../Assets/Sprites/UI/UI_ducks_hit.png";
 import ducksHitAtlasAsset from "../../Assets/Sprites/UI/UI_ducks_hit_atlas.jpg";
 import roundAsset from "../../Assets/Sprites/UI/UI_round.jpg";
 import roundAtlasAsset from "../../Assets/Sprites/UI/UI_round_atlas.jpg";
