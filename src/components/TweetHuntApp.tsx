@@ -65,7 +65,7 @@ const TITLE_SELECTION_SIZE = { width: 32, height: 24 };
 const TITLE_SELECTION_POSITIONS: Record<GameMode, { x: number; y: number }> = {
   A: { x: 178, y: 409 },
   B: { x: 178, y: 461 },
-  C: { x: 178, y: 510 }
+  C: { x: 178, y: 513 }
 };
 const TITLE_MODE_LABELS: Record<GameMode, string> = {
   A: "REAL TWEETS",
