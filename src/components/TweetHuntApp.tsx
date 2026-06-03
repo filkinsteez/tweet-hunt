@@ -93,6 +93,9 @@ const TITLE_UNLINK_LABEL = "UNLINK ACCOUNT";
 const TITLE_UNLINK_RECT = { x: 336, y: 616, width: 360, height: 52 };
 const MOBILE_TITLE_UNLINK_RECT = { x: 102, y: 884, width: 336, height: 56 };
 const MOBILE_LINKED_TITLE_UNLINK_RECT = { x: 102, y: 849, width: 336, height: 56 };
+const TITLE_UNLINK_SELECTION_POSITION = { x: 348, y: 640 };
+const MOBILE_TITLE_UNLINK_SELECTION_POSITION = { x: 69, y: 894 };
+const MOBILE_LINKED_TITLE_UNLINK_SELECTION_POSITION = { x: 69, y: 859 };
 
 function drawTitleSelection(
   ctx: CanvasRenderingContext2D,
@@ -882,6 +885,7 @@ export function TweetHuntApp() {
         const isLinked = authStatus === "authorized";
         const mobileScoreY = isLinked ? MOBILE_LINKED_TITLE_TOP_SCORE_Y : MOBILE_TITLE_TOP_SCORE_Y;
         const mobileUnlinkRect = isLinked ? MOBILE_LINKED_TITLE_UNLINK_RECT : MOBILE_TITLE_UNLINK_RECT;
+        const mobileUnlinkSelectionPosition = isLinked ? MOBILE_LINKED_TITLE_UNLINK_SELECTION_POSITION : MOBILE_TITLE_UNLINK_SELECTION_POSITION;
 
         ctx.fillStyle = "#02030a";
         ctx.fillRect(0, 0, layout.width, layout.height);
@@ -894,9 +898,12 @@ export function TweetHuntApp() {
         if (isLinked) {
           drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, mobileUnlinkRect.y + 36, {
             size: 16,
-            color: activeTitleUnlink ? "#fff9e8" : "#e79a1b",
+            color: "#e79a1b",
             align: "center"
           });
+          if (activeTitleUnlink) {
+            drawTitleSelection(ctx, images, mobileUnlinkSelectionPosition);
+          }
         }
         for (const mode of ["A", "B", "C"] as const) {
           const row = MOBILE_TITLE_MODE_ROWS[mode];
@@ -925,9 +932,12 @@ export function TweetHuntApp() {
       if (authStatus === "authorized") {
         drawPixelText(ctx, TITLE_UNLINK_LABEL, TITLE_UNLINK_RECT.x + TITLE_UNLINK_RECT.width / 2, TITLE_UNLINK_RECT.y + 34, {
           size: 18,
-          color: activeTitleUnlink ? "#fff9e8" : "#e79a1b",
+          color: "#e79a1b",
           align: "center"
         });
+        if (activeTitleUnlink) {
+          drawTitleSelection(ctx, images, TITLE_UNLINK_SELECTION_POSITION);
+        }
       }
 
       if (titleSelectionMode) {
