@@ -84,6 +84,7 @@ const MOBILE_TITLE_MODE_ROWS: Record<GameMode, { headingY: number; labelY: numbe
 };
 const MOBILE_TITLE_ART = { y: 70, width: 470 };
 const MOBILE_TITLE_TOP_SCORE_Y = 865;
+const MOBILE_LINKED_TITLE_TOP_SCORE_Y = 830;
 const MOBILE_TITLE_TOP_SCORE_SIZE = 20;
 const MOBILE_TITLE_HEADING_SIZE = 23;
 const MOBILE_TITLE_LABEL_SIZE = 31;
@@ -91,8 +92,10 @@ const MOBILE_TITLE_CLAY_LABEL_SIZE = 26;
 const TITLE_UNLINK_LABEL = "UNLINK ACCOUNT";
 const TITLE_UNLINK_RECT = { x: 336, y: 616, width: 360, height: 52 };
 const MOBILE_TITLE_UNLINK_RECT = { x: 102, y: 884, width: 336, height: 56 };
+const MOBILE_LINKED_TITLE_UNLINK_RECT = { x: 102, y: 849, width: 336, height: 56 };
 const TITLE_UNLINK_SELECTION_POSITION = { x: 303, y: 626 };
 const MOBILE_TITLE_UNLINK_SELECTION_POSITION = { x: 69, y: 894 };
+const MOBILE_LINKED_TITLE_UNLINK_SELECTION_POSITION = { x: 69, y: 859 };
 
 function drawTitleSelection(
   ctx: CanvasRenderingContext2D,
@@ -740,7 +743,7 @@ export function TweetHuntApp() {
   const titleSelectionMode = pendingMode ?? activeTitleMode;
   const linkedAccountLabel = handle ? `@${handle}` : "your linked X account";
   const modalTitle =
-    authStatus === "authorized" ? "Live Tweet Mode" : authStatus === "unknown" ? "Checking Connection" : "Connect Account";
+    authStatus === "authorized" ? "Real Tweet Mode" : authStatus === "unknown" ? "Checking Connection" : "Connect Account";
   const modalBody =
     authStatus === "authorized"
       ? `Connected to ${linkedAccountLabel}. Shooting a bird will immediately delete a random tweet. Ready to hunt?`
@@ -879,22 +882,27 @@ export function TweetHuntApp() {
   const drawTitleScreen = useCallback(
     ({ ctx, images }: { ctx: CanvasRenderingContext2D; images: Record<string, HTMLImageElement> }) => {
       if (isPortraitLayout(layout)) {
+        const isLinked = authStatus === "authorized";
+        const mobileScoreY = isLinked ? MOBILE_LINKED_TITLE_TOP_SCORE_Y : MOBILE_TITLE_TOP_SCORE_Y;
+        const mobileUnlinkRect = isLinked ? MOBILE_LINKED_TITLE_UNLINK_RECT : MOBILE_TITLE_UNLINK_RECT;
+        const mobileUnlinkSelectionPosition = isLinked ? MOBILE_LINKED_TITLE_UNLINK_SELECTION_POSITION : MOBILE_TITLE_UNLINK_SELECTION_POSITION;
+
         ctx.fillStyle = "#02030a";
         ctx.fillRect(0, 0, layout.width, layout.height);
         drawCenteredImage(ctx, images.title, layout.width / 2, MOBILE_TITLE_ART.y, MOBILE_TITLE_ART.width);
-        drawPixelText(ctx, `TOP SCORE ${titleTopScore}`, layout.width / 2, MOBILE_TITLE_TOP_SCORE_Y, {
+        drawPixelText(ctx, `TOP SCORE ${titleTopScore}`, layout.width / 2, mobileScoreY, {
           size: MOBILE_TITLE_TOP_SCORE_SIZE,
           color: "#70e27b",
           align: "center"
         });
-        if (authStatus === "authorized") {
-          drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, MOBILE_TITLE_UNLINK_RECT.y + 36, {
+        if (isLinked) {
+          drawPixelText(ctx, TITLE_UNLINK_LABEL, layout.width / 2, mobileUnlinkRect.y + 36, {
             size: 16,
             color: "#e79a1b",
             align: "center"
           });
           if (activeTitleUnlink) {
-            drawTitleSelection(ctx, images, MOBILE_TITLE_UNLINK_SELECTION_POSITION);
+            drawTitleSelection(ctx, images, mobileUnlinkSelectionPosition);
           }
         }
         for (const mode of ["A", "B", "C"] as const) {
@@ -983,7 +991,7 @@ export function TweetHuntApp() {
 
   if (stage === "title") {
     const titleOptionRects = isPortraitLayout(layout) ? MOBILE_TITLE_OPTION_RECTS : LANDSCAPE_TITLE_OPTION_RECTS;
-    const titleUnlinkRect = isPortraitLayout(layout) ? MOBILE_TITLE_UNLINK_RECT : TITLE_UNLINK_RECT;
+    const titleUnlinkRect = isPortraitLayout(layout) ? MOBILE_LINKED_TITLE_UNLINK_RECT : TITLE_UNLINK_RECT;
     const titleModalLayout = activeTitleModal ? measureTitleModalLayout(layout, activeTitleModal) : null;
     const titleModalCancel = pendingMode ? cancelPendingMode : cancelUnlinkAuthorization;
     const titleModalPrimary = pendingMode ? confirmPendingMode : confirmUnlinkAuthorization;
@@ -993,7 +1001,7 @@ export function TweetHuntApp() {
     return (
       <main className={`game-shell${mobileScreenClass}${hasIntroBannerContent ? " game-shell-with-banner" : ""}`}>
         {renderIntroBanner()}
-        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
+        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS..." />
         <div className="game-stage">
           <ArcadeScreenCanvas className="title-crt" layout={layout} ariaLabel={`tweet-hunt title screen. Top score ${titleTopScore}`} images={titleScreenImages} drawFrame={drawTitleScreen}>
             <div className="title-hit-regions" aria-label="Choose a game mode or manage linked account">
@@ -1126,7 +1134,7 @@ export function TweetHuntApp() {
     return (
       <main className={`game-shell${showIntroBanner ? " game-shell-with-banner" : ""}`}>
         {showIntroBanner ? renderIntroBanner() : null}
-        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
+        <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS..." />
         <div className="game-stage">
           <GameCanvas
             mode={config.mode}
@@ -1143,7 +1151,7 @@ export function TweetHuntApp() {
 
   return (
     <main className="game-shell">
-      <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS" />
+      <CanvasLoadingOverlay visible={isLoadingTweets} label="IMPORTING TWEETS..." />
       <div className="game-stage">
         {stage === "review" && lastResult ? (
           <ArcadeRoundReview

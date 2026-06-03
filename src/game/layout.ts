@@ -97,9 +97,9 @@ export const PORTRAIT_LAYOUT: GameplayLayoutProfile = {
     score: { x: 352, y: 24 }
   },
   microRevealPanel: { x: 10, y: 8, width: 520, height: 170 },
-  pausePanel: { x: 46, y: 278, width: 448, height: 330 },
-  pauseQuitButton: { x: 86, y: 504, width: 154, height: 58 },
-  pauseResumeButton: { x: 290, y: 504, width: 164, height: 58 },
+  pausePanel: { x: 46, y: 282, width: 448, height: 330 },
+  pauseQuitButton: { x: 86, y: 513, width: 154, height: 58 },
+  pauseResumeButton: { x: 290, y: 513, width: 164, height: 58 },
   duckCallButton: { x: 412, y: 718, width: 116, height: 88 },
   goldenFlushPanel: { x: 18, y: 188, width: 504, height: 230 },
   dogRetrieveTriggerY: 710,

@@ -502,7 +502,7 @@ function drawMobilePauseX(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
     lineWidth: 3,
     bevel: 6
   });
-  drawPixelText(ctx, "X", rect.x + rect.width / 2, rect.y + rect.height / 2 + 1, {
+  drawPixelText(ctx, "X", rect.x + rect.width / 2 + 2, rect.y + rect.height / 2 + 1, {
     size: 24,
     color: "#fff9e8",
     align: "center",
@@ -968,14 +968,14 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
 
   drawArcadeModalScrim(ctx);
   drawArcadeModalPanel(ctx, layout.pausePanel);
-  drawArcadeModalTitle(ctx, "PAUSED", layout.width / 2, layout.pausePanel.y + 48, isPortrait ? 36 : 44);
+  drawArcadeModalTitle(ctx, "PAUSED", layout.width / 2 + 6, layout.pausePanel.y + (isPortrait ? 53 : 48), isPortrait ? 36 : 44);
   if (isPortrait) {
-    drawPixelText(ctx, "TAP RESUME", layout.width / 2, layout.pausePanel.y + 132, {
+    drawPixelText(ctx, "TAP RESUME", layout.width / 2, layout.pausePanel.y + 130, {
       size: 22,
       color: "#fff9e8",
       align: "center"
     });
-    drawPixelText(ctx, "TO CONTINUE", layout.width / 2, layout.pausePanel.y + 172, {
+    drawPixelText(ctx, "TO CONTINUE", layout.width / 2, layout.pausePanel.y + 170, {
       size: 22,
       color: "#fff9e8",
       align: "center"
