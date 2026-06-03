@@ -26,7 +26,7 @@ const QUIT_BUTTON: Rect = { x: 220, y: 596, width: 180, height: 68 };
 const NEXT_ROUND_BUTTON: Rect = { x: 432, y: 596, width: 308, height: 68 };
 const BUTTON_TEXT_SIZE_PORTRAIT = 16;
 const BUTTON_TEXT_SIZE_DESKTOP = 18;
-const RESUME_SCROLL_DELAY_MS = 1800;
+const RESUME_SCROLL_DELAY_MS = 500;
 const SUMMARY_ROUND_Y = 160;
 const SUMMARY_MODE_Y = 210;
 const SUMMARY_STATS_LABEL_Y = 318;
@@ -228,11 +228,12 @@ function drawTweetCreditList(
   const totalHeight =
     items.reduce((sum, item) => sum + item.height, 0) + Math.max(items.length - 1, 0) * groupGap;
   const scrollSpeed = isPortrait ? 0.034 : 0.045;
-  const scrollMax = totalHeight;
+  const scrimHeight = isPortrait ? 80 : 84;
+  const bottomRevealPadding = scrimHeight + (isPortrait ? 18 : 12);
+  const scrollMax = Math.max(0, totalHeight - viewportHeight + bottomRevealPadding);
   const autoScrollY = scrollMax > 0 ? Math.min(timeMs * scrollSpeed, scrollMax) : 0;
   const scrollY = resolveScroll({ scrollMax, autoScrollY });
-  let y = viewportBottom - scrollY;
-  const scrimHeight = isPortrait ? 80 : 84;
+  let y = viewportTop - scrollY;
   const panelFill = "#101018";
   const scrimFadeColor = "rgba(16, 16, 24, 0)";
 
