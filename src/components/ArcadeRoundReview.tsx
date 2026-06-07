@@ -414,8 +414,8 @@ export function ArcadeRoundReview({ layout = LANDSCAPE_LAYOUT, result, onChangeG
         });
         drawGoldenSummaryCard(ctx, result, content, isPortrait, images, localTimeMs);
       } else if (hasTweetReview) {
-        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 42 : 62, isPortrait ? 20 : 24);
-        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 58 : 96, {
+        drawArcadeModalTitle(ctx, `ROUND ${result.roundNumber} REVIEW`, layout.width / 2, isPortrait ? 41 : 62, isPortrait ? 20 : 24);
+        drawPixelText(ctx, `SCORE ${String(result.score).padStart(6, "0")}    HITS ${result.hits.length}`, layout.width / 2, isPortrait ? 66 : 96, {
           size: isPortrait ? 15 : 18,
           color: "#70e27b",
           align: "center"

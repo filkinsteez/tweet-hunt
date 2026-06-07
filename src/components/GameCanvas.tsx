@@ -163,6 +163,7 @@ type RuntimeState = {
   pendingLaunches: number;
   launchSlotIndex: number;
   lastPathId: number;
+  lastPortraitBirdLaunchSide?: 1 | -1;
   retrieveDogTriggeredAtMs?: number;
   retrieveDogX?: number;
   dogLaughSoundPlayed: boolean;
@@ -539,6 +540,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     pendingLaunches: 0,
     launchSlotIndex: 0,
     lastPathId: -1,
+    lastPortraitBirdLaunchSide: undefined,
     retrieveDogTriggeredAtMs: undefined,
     retrieveDogX: undefined,
     dogLaughSoundPlayed: false,
@@ -1185,7 +1187,14 @@ function launchPortraitTarget(state: RuntimeState, target: TargetEntity, now: nu
     return;
   }
 
-  const launchSide = target.slotIndex === 0 ? -1 : 1;
+  let launchSide: 1 | -1 = target.slotIndex === 0 ? -1 : 1;
+  if (targetsPerVolley(state.mode) === 1) {
+    launchSide = (rngNext(state.rng) & 1) === 0 ? -1 : 1;
+    if (state.lastPortraitBirdLaunchSide !== undefined && launchSide === state.lastPortraitBirdLaunchSide) {
+      launchSide = launchSide === 1 ? -1 : 1;
+    }
+    state.lastPortraitBirdLaunchSide = launchSide;
+  }
   const speedJitter = rngNext(state.rng) % layout.tuning.birdSpeedJitter;
   const startX =
     launchSide < 0
