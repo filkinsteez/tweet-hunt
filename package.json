@@ -2,7 +2,7 @@
   "name": "tweet-hunt",
   "version": "0.1.0",
   "private": true,
-  "description": "A single-player retro arcade prototype where hit targets become reviewed tweet deletion candidates.",
+  "description": "A retro arcade game where tweets turn into target practice.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

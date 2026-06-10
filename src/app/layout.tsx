@@ -5,9 +5,20 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "./globals.css";
 
+const SITE_DESCRIPTION = "A retro arcade game where tweets turn into target practice.";
+
 export const metadata: Metadata = {
   title: "Tweet Hunt",
-  description: "A retro arcade prototype for reviewing and deleting tweets through gameplay."
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    title: "Tweet Hunt",
+    description: SITE_DESCRIPTION
+  },
+  twitter: {
+    card: "summary",
+    title: "Tweet Hunt",
+    description: SITE_DESCRIPTION
+  }
 };
 
 export const viewport: Viewport = {
