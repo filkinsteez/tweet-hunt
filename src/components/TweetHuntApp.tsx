@@ -428,6 +428,7 @@ export function TweetHuntApp() {
   const layout = useGameplayLayout();
   const [stage, setStage] = useState<Stage>("welcome");
   const [roundNumber, setRoundNumber] = useState(1);
+  const [currentScore, setCurrentScore] = useState(0);
   const [config, setConfig] = useState<HuntConfig>({ mode: "A", source: "random" });
   const [lastResult, setLastResult] = useState<RoundResult | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("unknown");
@@ -678,6 +679,7 @@ export function TweetHuntApp() {
   function handleRoundEnd(result: RoundResult) {
     const { next, isNewBest } = mergeBestScore(result.mode, result.score);
     if (isNewBest) setHighScores(next);
+    setCurrentScore(result.score);
     setLastResult(result);
     setStage("review");
   }
@@ -734,6 +736,9 @@ export function TweetHuntApp() {
 
   function stopAudioAndShowTitleScreen() {
     gameAudio.stopAll();
+    setRoundNumber(1);
+    setCurrentScore(0);
+    setLastResult(null);
     setStage("title");
   }
 
@@ -1139,6 +1144,7 @@ export function TweetHuntApp() {
           <GameCanvas
             mode={config.mode}
             roundNumber={roundNumber}
+            initialScore={currentScore}
             tweets={roundTweets}
             isLiveTweetRound={isLiveTweetRound}
             onRoundEnd={handleRoundEnd}

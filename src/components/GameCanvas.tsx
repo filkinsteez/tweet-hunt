@@ -200,6 +200,7 @@ type MicroReveal = {
 type Props = {
   mode: GameMode;
   roundNumber: number;
+  initialScore: number;
   tweets: TweetCandidate[];
   isLiveTweetRound: boolean;
   onRoundEnd: (result: RoundResult) => void;
@@ -512,7 +513,14 @@ function drawMobilePauseX(ctx: CanvasRenderingContext2D, layout: GameplayLayoutP
   ctx.restore();
 }
 
-function createInitialState(mode: GameMode, roundNumber: number, targetLimit: number, isLiveTweetRound: boolean, layout: GameplayLayoutProfile): RuntimeState {
+function createInitialState(
+  mode: GameMode,
+  roundNumber: number,
+  targetLimit: number,
+  isLiveTweetRound: boolean,
+  initialScore: number,
+  layout: GameplayLayoutProfile
+): RuntimeState {
   return {
     mode,
     layout,
@@ -528,7 +536,7 @@ function createInitialState(mode: GameMode, roundNumber: number, targetLimit: nu
     targets: [],
     shotsRemaining: SHOTS_PER_VOLLEY,
     shotsFired: 0,
-    score: 0,
+    score: initialScore,
     hits: [],
     escapes: [],
     lastVolleyHitCount: 0,
@@ -1662,7 +1670,7 @@ function pointHitsTarget(point: { x: number; y: number }, target: TargetEntity, 
   );
 }
 
-export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoundEnd, onQuit, presentation = "crt", onSourceCanvasReady }: Props) {
+export function GameCanvas({ mode, roundNumber, initialScore, tweets, isLiveTweetRound, onRoundEnd, onQuit, presentation = "crt", onSourceCanvasReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cabinetRef = useRef<HTMLDivElement | null>(null);
   const crtCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1997,7 +2005,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
     if (!assetReady || !fontReady) return undefined;
     const now = performance.now();
     const targetLimit = isLiveTweetRound ? Math.min(Math.max(tweetsRef.current.length, 1), TARGETS_PER_ROUND) : TARGETS_PER_ROUND;
-    const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound, layout);
+    const state = createInitialState(mode, roundNumber, targetLimit, isLiveTweetRound, initialScore, layout);
     const introAudioSignature = `${mode}:${roundNumber}:${isLiveTweetRound ? "live" : "arcade"}:${targetLimit}`;
     if (introAudioSignatureRef.current !== introAudioSignature) {
       introAudioSignatureRef.current = introAudioSignature;
@@ -2014,7 +2022,7 @@ export function GameCanvas({ mode, roundNumber, tweets, isLiveTweetRound, onRoun
       gameAudio.stopLoop("clayPigeonFlying");
       stateRef.current = null;
     };
-  }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound, layout]);
+  }, [assetReady, fontReady, mode, roundNumber, isLiveTweetRound, initialScore, layout]);
 
   const draw = useCallback((frameTimeMs: number) => {
     const canvas = canvasRef.current;

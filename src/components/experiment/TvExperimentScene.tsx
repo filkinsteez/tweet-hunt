@@ -218,6 +218,7 @@ function HiddenGameFeed({ onSourceCanvasReady }: { onSourceCanvasReady: (canvas:
       <GameCanvas
         mode="B"
         roundNumber={1}
+        initialScore={0}
         tweets={[]}
         isLiveTweetRound={false}
         onRoundEnd={handleRoundEnd}
