@@ -31,8 +31,18 @@ type XTweetsResponse = {
 };
 
 const CANDIDATES_PER_ROUND = 10;
-const CANDIDATE_POOL_SIZE = 100;
-const CANDIDATE_POOL_PAGES = 10;
+const CANDIDATE_PAGE_SIZE = 100;
+const MAX_CANDIDATE_PAGES = 10;
+
+class TweetLoadError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "TweetLoadError";
+  }
+}
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -76,9 +86,9 @@ async function loadAccessibleTweets(headers: { Authorization: string }, userId: 
   const tweets: XTweet[] = [];
   let nextToken: string | undefined;
 
-  for (let page = 0; page < CANDIDATE_POOL_PAGES; page += 1) {
+  for (let page = 0; page < MAX_CANDIDATE_PAGES; page += 1) {
     const tweetsUrl = new URL(`${X_API_BASE_URL}/users/${userId}/tweets`);
-    tweetsUrl.searchParams.set("max_results", CANDIDATE_POOL_SIZE.toString());
+    tweetsUrl.searchParams.set("max_results", CANDIDATE_PAGE_SIZE.toString());
     tweetsUrl.searchParams.set("tweet.fields", "created_at,public_metrics");
     if (nextToken) tweetsUrl.searchParams.set("pagination_token", nextToken);
 
@@ -88,22 +98,22 @@ async function loadAccessibleTweets(headers: { Authorization: string }, userId: 
     });
 
     if (tweetsResponse.status === 401 || tweetsResponse.status === 403) {
-      throw new Response("X denied access to tweets. Re-authorize and make sure tweet.read is granted.", { status: 401 });
+      throw new TweetLoadError("X denied access to tweets. Re-authorize and make sure tweet.read is granted.", 401);
     }
 
     if (tweetsResponse.status === 429) {
-      throw new Response("X rate-limited tweet loading. Try again later.", { status: 429 });
+      throw new TweetLoadError("X rate-limited tweet loading. Try again later.", 429);
     }
 
     if (!tweetsResponse.ok) {
-      throw new Response("Could not load live tweets from X.", { status: 502 });
+      throw new TweetLoadError("Could not load live tweets from X.", 502);
     }
 
     let tweetsJson: XTweetsResponse;
     try {
       tweetsJson = (await tweetsResponse.json()) as XTweetsResponse;
     } catch {
-      throw new Response("Could not load live tweets from X.", { status: 502 });
+      throw new TweetLoadError("Could not load live tweets from X.", 502);
     }
 
     tweets.push(...(tweetsJson.data ?? []));
@@ -152,9 +162,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ tweets });
   } catch (error) {
-    if (error instanceof Response) {
-      const message = await error.text();
-      return jsonError(message, error.status);
+    if (error instanceof TweetLoadError) {
+      return jsonError(error.message, error.status);
     }
 
     return jsonError("Could not load live tweets from X.", 502);
