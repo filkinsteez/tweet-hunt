@@ -25,10 +25,14 @@ type XTweet = {
 
 type XTweetsResponse = {
   data?: XTweet[];
+  meta?: {
+    next_token?: string;
+  };
 };
 
 const CANDIDATES_PER_ROUND = 10;
 const CANDIDATE_POOL_SIZE = 100;
+const CANDIDATE_POOL_PAGES = 10;
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -68,6 +72,48 @@ function toTweetCandidate(tweet: XTweet): TweetCandidate {
   };
 }
 
+async function loadAccessibleTweets(headers: { Authorization: string }, userId: string): Promise<XTweet[]> {
+  const tweets: XTweet[] = [];
+  let nextToken: string | undefined;
+
+  for (let page = 0; page < CANDIDATE_POOL_PAGES; page += 1) {
+    const tweetsUrl = new URL(`${X_API_BASE_URL}/users/${userId}/tweets`);
+    tweetsUrl.searchParams.set("max_results", CANDIDATE_POOL_SIZE.toString());
+    tweetsUrl.searchParams.set("tweet.fields", "created_at,public_metrics");
+    if (nextToken) tweetsUrl.searchParams.set("pagination_token", nextToken);
+
+    const tweetsResponse = await fetch(tweetsUrl, {
+      headers,
+      cache: "no-store"
+    });
+
+    if (tweetsResponse.status === 401 || tweetsResponse.status === 403) {
+      throw new Response("X denied access to tweets. Re-authorize and make sure tweet.read is granted.", { status: 401 });
+    }
+
+    if (tweetsResponse.status === 429) {
+      throw new Response("X rate-limited tweet loading. Try again later.", { status: 429 });
+    }
+
+    if (!tweetsResponse.ok) {
+      throw new Response("Could not load live tweets from X.", { status: 502 });
+    }
+
+    let tweetsJson: XTweetsResponse;
+    try {
+      tweetsJson = (await tweetsResponse.json()) as XTweetsResponse;
+    } catch {
+      throw new Response("Could not load live tweets from X.", { status: 502 });
+    }
+
+    tweets.push(...(tweetsJson.data ?? []));
+    nextToken = tweetsJson.meta?.next_token;
+    if (!nextToken) break;
+  }
+
+  return tweets;
+}
+
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(COOKIE_ACCESS_TOKEN)?.value;
   if (!token) {
@@ -100,31 +146,17 @@ export async function GET(request: NextRequest) {
     return jsonError("Could not identify the linked X account.", 502);
   }
 
-  const tweetsUrl = new URL(`${X_API_BASE_URL}/users/${userId}/tweets`);
-  tweetsUrl.searchParams.set("max_results", CANDIDATE_POOL_SIZE.toString());
-  tweetsUrl.searchParams.set("tweet.fields", "created_at,public_metrics");
-
-  const tweetsResponse = await fetch(tweetsUrl, {
-    headers,
-    cache: "no-store"
-  });
-
-  if (tweetsResponse.status === 401 || tweetsResponse.status === 403) {
-    return jsonError("X denied access to tweets. Re-authorize and make sure tweet.read is granted.", 401);
-  }
-
-  if (!tweetsResponse.ok) {
-    return jsonError("Could not load live tweets from X.", 502);
-  }
-
-  let tweetsJson: XTweetsResponse;
   try {
-    tweetsJson = (await tweetsResponse.json()) as XTweetsResponse;
-  } catch {
+    const availableTweets = uniqueTweetsById(await loadAccessibleTweets(headers, userId));
+    const tweets = randomSample(availableTweets, CANDIDATES_PER_ROUND).map(toTweetCandidate);
+
+    return NextResponse.json({ tweets });
+  } catch (error) {
+    if (error instanceof Response) {
+      const message = await error.text();
+      return jsonError(message, error.status);
+    }
+
     return jsonError("Could not load live tweets from X.", 502);
   }
-  const availableTweets = uniqueTweetsById(tweetsJson.data ?? []);
-  const tweets = randomSample(availableTweets, CANDIDATES_PER_ROUND).map(toTweetCandidate);
-
-  return NextResponse.json({ tweets });
 }
