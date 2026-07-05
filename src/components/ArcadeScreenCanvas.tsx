@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import crtAsset from "../../Assets/CRT/crt_cold.jpg";
 import { getLoadedImage, isPixelFontLoaded, loadImage, loadPixelFont } from "@/game/assetCache";
+import { PORTRAIT_FRAME_INTERVAL_MS, PORTRAIT_FRAME_TOLERANCE_MS } from "@/game/constants";
 import { CrtRenderer } from "@/game/crtRenderer";
 import { drawCrosshair } from "@/game/draw";
 import { LANDSCAPE_LAYOUT, type GameplayLayoutProfile } from "@/game/layout";
@@ -37,6 +38,7 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
     }))
   );
   const rafRef = useRef<number | null>(null);
+  const lastRenderedFrameAtRef = useRef(0);
   const mouseRef = useRef({ x: layout.width / 2, y: layout.height / 2 });
   const [assetReady, setAssetReady] = useState(() => Object.values(images).every((src) => Boolean(getLoadedImage(src))));
   const [fontReady, setFontReady] = useState(() => isPixelFontLoaded());
@@ -140,6 +142,12 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
     if (!assetReady || !fontReady) return undefined;
 
     const tick = (timeMs: number) => {
+      if (isPortrait && timeMs - lastRenderedFrameAtRef.current < PORTRAIT_FRAME_INTERVAL_MS - PORTRAIT_FRAME_TOLERANCE_MS) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      lastRenderedFrameAtRef.current = timeMs;
+
       const canvas = sourceCanvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
@@ -150,6 +158,7 @@ export function ArcadeScreenCanvas({ ariaLabel, className = "", presentation = "
       rafRef.current = requestAnimationFrame(tick);
     };
 
+    lastRenderedFrameAtRef.current = 0;
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

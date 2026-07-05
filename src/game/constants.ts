@@ -2,6 +2,10 @@ import type { GameMode } from "./types";
 
 export const CANVAS_WIDTH = 960;
 export const CANVAS_HEIGHT = 720;
+export const PORTRAIT_FRAME_INTERVAL_MS = 1000 / 30;
+/* Half a 120Hz frame of tolerance; without it vsync timestamp jitter makes the
+   30fps throttle skip an extra frame and land at 20-24fps instead of a stable 30. */
+export const PORTRAIT_FRAME_TOLERANCE_MS = 4;
 export const TARGETS_PER_ROUND = 10;
 export const SHOTS_PER_VOLLEY = 3;
 export const DOG_INTRO_WALK_MS = 5500;

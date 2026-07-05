@@ -39,13 +39,29 @@ const SOUND_URLS: Record<GameSoundKey, string> = {
   roundClear: new URL("../../Assets/Audio/round_clear.wav", import.meta.url).href
 };
 
-const POOL_SIZE = 4;
+const MAX_CONCURRENT_PER_KEY = 4;
 
+type ActiveSound = {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+};
+
+/**
+ * Game SFX on the Web Audio API. HTMLAudioElement playback goes through the
+ * system media pipeline and blocks the main thread on iOS Safari (rapid-fire
+ * sounds like wing flaps drop gameplay to single-digit fps); decoded
+ * AudioBuffers played through AudioBufferSourceNodes are effectively free.
+ */
 class GameAudio {
-  private readonly pools = new Map<GameSoundKey, HTMLAudioElement[]>();
-  private readonly loops = new Map<GameSoundKey, HTMLAudioElement>();
+  private context: AudioContext | null = null;
+  private readonly buffers = new Map<GameSoundKey, AudioBuffer>();
+  private readonly bufferRequests = new Map<GameSoundKey, Promise<AudioBuffer | null>>();
+  private readonly activeSounds = new Map<GameSoundKey, Set<ActiveSound>>();
+  private readonly loops = new Map<GameSoundKey, ActiveSound>();
+  private readonly pendingLoopVolumes = new Map<GameSoundKey, number>();
   private unlocked = false;
   private initialized = false;
+  private generation = 0;
 
   constructor() {
     if (typeof window === "undefined") return;
@@ -57,91 +73,63 @@ class GameAudio {
     this.initialize();
     if (!this.unlocked) return;
 
-    const pool = this.pools.get(key);
-    if (!pool || pool.length === 0) return;
-
-    const audio = pool.find((candidate) => candidate.paused || candidate.ended) ?? pool[0];
-    try {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.volume = volume;
-      void audio.play().catch(() => undefined);
-    } catch {
-      // Audio should never break gameplay.
-    }
+    this.withBuffer(key, (buffer) => this.startSound(key, buffer, volume));
   }
 
   playIfIdle(key: GameSoundKey, volume = 0.75) {
     if (typeof window === "undefined") return;
     this.initialize();
     if (!this.unlocked) return;
+    if ((this.activeSounds.get(key)?.size ?? 0) > 0) return;
 
-    const pool = this.pools.get(key);
-    if (!pool || pool.length === 0) return;
-    const audio = pool.find((candidate) => candidate.paused || candidate.ended);
-    if (!audio) return;
-
-    try {
-      audio.currentTime = 0;
-      audio.volume = volume;
-      void audio.play().catch(() => undefined);
-    } catch {
-      // Audio should never break gameplay.
-    }
+    this.withBuffer(key, (buffer) => {
+      if ((this.activeSounds.get(key)?.size ?? 0) > 0) return;
+      this.startSound(key, buffer, volume);
+    });
   }
 
   startLoop(key: GameSoundKey, volume = 0.55) {
     if (typeof window === "undefined") return;
     this.initialize();
     if (!this.unlocked) return;
-    if (this.loops.has(key)) return;
+    if (this.loops.has(key) || this.pendingLoopVolumes.has(key)) return;
 
-    const audio = new Audio(SOUND_URLS[key]);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = volume;
-    this.loops.set(key, audio);
-    void audio.play().catch(() => {
-      this.loops.delete(key);
+    const buffer = this.buffers.get(key);
+    if (buffer) {
+      this.startLoopSound(key, buffer, volume);
+      return;
+    }
+
+    this.pendingLoopVolumes.set(key, volume);
+    const generation = this.generation;
+    void this.loadBuffer(key).then((loaded) => {
+      const pendingVolume = this.pendingLoopVolumes.get(key);
+      this.pendingLoopVolumes.delete(key);
+      if (!loaded || generation !== this.generation || pendingVolume === undefined) return;
+      if (this.loops.has(key)) return;
+      this.startLoopSound(key, loaded, pendingVolume);
     });
   }
 
   stopLoop(key: GameSoundKey) {
-    const audio = this.loops.get(key);
-    if (!audio) return;
-
-    try {
-      audio.pause();
-      audio.currentTime = 0;
-    } catch {
-      // Audio should never break gameplay.
-    } finally {
-      this.loops.delete(key);
-    }
+    this.pendingLoopVolumes.delete(key);
+    const active = this.loops.get(key);
+    if (!active) return;
+    this.loops.delete(key);
+    stopSound(active);
   }
 
   stopAll() {
     if (typeof window === "undefined") return;
+    this.generation += 1;
+    this.pendingLoopVolumes.clear();
 
-    for (const pool of this.pools.values()) {
-      for (const audio of pool) {
-        try {
-          audio.pause();
-          audio.currentTime = 0;
-        } catch {
-          // Audio should never break gameplay.
-        }
-      }
+    for (const sounds of this.activeSounds.values()) {
+      for (const active of sounds) stopSound(active);
+      sounds.clear();
     }
 
-    for (const audio of this.loops.values()) {
-      try {
-        audio.pause();
-        audio.currentTime = 0;
-      } catch {
-        // Audio should never break gameplay.
-      }
-    }
+    for (const active of this.loops.values()) stopSound(active);
     this.loops.clear();
   }
 
@@ -149,25 +137,177 @@ class GameAudio {
     if (typeof window === "undefined") return;
     this.initialize();
     this.unlocked = true;
+    this.resumeContext();
   }
 
   private initialize() {
     if (this.initialized || typeof window === "undefined") return;
     this.initialized = true;
 
-    for (const [key, src] of Object.entries(SOUND_URLS) as Array<[GameSoundKey, string]>) {
-      const pool = Array.from({ length: POOL_SIZE }, () => {
-        const audio = new Audio(src);
-        audio.preload = "auto";
-        return audio;
-      });
-      this.pools.set(key, pool);
+    for (const key of Object.keys(SOUND_URLS) as GameSoundKey[]) {
+      void this.loadBuffer(key);
     }
 
     const unlock = () => this.unlock();
     window.addEventListener("pointerdown", unlock, { once: true, capture: true });
     window.addEventListener("keydown", unlock, { once: true, capture: true });
     window.addEventListener("touchstart", unlock, { once: true, capture: true });
+  }
+
+  private ensureContext(): AudioContext | null {
+    if (this.context) return this.context;
+    if (typeof window === "undefined") return null;
+
+    const Constructor =
+      window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Constructor) return null;
+
+    try {
+      this.context = new Constructor();
+    } catch {
+      return null;
+    }
+    return this.context;
+  }
+
+  private resumeContext() {
+    const context = this.ensureContext();
+    if (context && context.state !== "running") {
+      void context.resume().catch(() => undefined);
+    }
+  }
+
+  private withBuffer(key: GameSoundKey, onReady: (buffer: AudioBuffer) => void) {
+    const cached = this.buffers.get(key);
+    if (cached) {
+      onReady(cached);
+      return;
+    }
+
+    const generation = this.generation;
+    void this.loadBuffer(key).then((buffer) => {
+      if (!buffer || generation !== this.generation) return;
+      onReady(buffer);
+    });
+  }
+
+  private loadBuffer(key: GameSoundKey): Promise<AudioBuffer | null> {
+    const cached = this.buffers.get(key);
+    if (cached) return Promise.resolve(cached);
+
+    const pending = this.bufferRequests.get(key);
+    if (pending) return pending;
+
+    const request = (async () => {
+      try {
+        const context = this.ensureContext();
+        if (!context) return null;
+
+        const response = await fetch(SOUND_URLS[key]);
+        if (!response.ok) return null;
+
+        const data = await response.arrayBuffer();
+        const buffer = await context.decodeAudioData(data);
+        this.buffers.set(key, buffer);
+        return buffer;
+      } catch {
+        return null;
+      } finally {
+        this.bufferRequests.delete(key);
+      }
+    })();
+
+    this.bufferRequests.set(key, request);
+    return request;
+  }
+
+  private startSound(key: GameSoundKey, buffer: AudioBuffer, volume: number) {
+    const context = this.ensureContext();
+    if (!context) return;
+    this.resumeContext();
+
+    let sounds = this.activeSounds.get(key);
+    if (!sounds) {
+      sounds = new Set();
+      this.activeSounds.set(key, sounds);
+    }
+
+    if (sounds.size >= MAX_CONCURRENT_PER_KEY) {
+      const oldest = sounds.values().next().value;
+      if (oldest) {
+        sounds.delete(oldest);
+        stopSound(oldest);
+      }
+    }
+
+    const active = createSound(context, buffer, volume, false);
+    if (!active) return;
+
+    sounds.add(active);
+    active.source.onended = () => {
+      sounds.delete(active);
+      disconnectSound(active);
+    };
+
+    try {
+      active.source.start();
+    } catch {
+      sounds.delete(active);
+      disconnectSound(active);
+    }
+  }
+
+  private startLoopSound(key: GameSoundKey, buffer: AudioBuffer, volume: number) {
+    const context = this.ensureContext();
+    if (!context) return;
+    this.resumeContext();
+
+    const active = createSound(context, buffer, volume, true);
+    if (!active) return;
+
+    this.loops.set(key, active);
+    try {
+      active.source.start();
+    } catch {
+      this.loops.delete(key);
+      disconnectSound(active);
+    }
+  }
+}
+
+function createSound(context: AudioContext, buffer: AudioBuffer, volume: number, loop: boolean): ActiveSound | null {
+  try {
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = loop;
+
+    const gain = context.createGain();
+    gain.gain.value = Math.min(Math.max(volume, 0), 1);
+
+    source.connect(gain);
+    gain.connect(context.destination);
+    return { source, gain };
+  } catch {
+    return null;
+  }
+}
+
+function stopSound(active: ActiveSound) {
+  active.source.onended = null;
+  try {
+    active.source.stop();
+  } catch {
+    // Sources that never started throw; audio should never break gameplay.
+  }
+  disconnectSound(active);
+}
+
+function disconnectSound(active: ActiveSound) {
+  try {
+    active.source.disconnect();
+    active.gain.disconnect();
+  } catch {
+    // Audio should never break gameplay.
   }
 }
 

@@ -920,6 +920,13 @@ button {
     touch-action: none;
   }
 
+  /* The animated scanline/glass overlays blend full-screen layers every frame
+     (mix-blend-mode at 3x DPR) and cost real GPU time on mobile. */
+  .crt-screen::before,
+  .crt-screen::after {
+    display: none;
+  }
+
   .game-canvas {
     aspect-ratio: unset;
   }

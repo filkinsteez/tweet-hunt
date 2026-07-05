@@ -48,6 +48,8 @@ import {
   GOLDEN_DUCK_SPEED_MULTIPLIER,
   GOLDEN_DUCK_VISIBLE_MS,
   HIT_REACTION_DURATION_MS,
+  PORTRAIT_FRAME_INTERVAL_MS,
+  PORTRAIT_FRAME_TOLERANCE_MS,
   ROUND_INTRO_DURATION_MS,
   RESOLVE_DELAY_MS,
   SHOTS_PER_VOLLEY,
@@ -257,7 +259,6 @@ const DOG_BARK_REPEAT_FRAMES = 16;
 const DOG_INTRO_FLUSH_START_MS = DOG_INTRO_JUMP_START_MS;
 const DOG_INTRO_FLUSH_END_MS = DOG_INTRO_FLUSH_START_MS + DOG_INTRO_JUMP_MS;
 const DUCK_FLAP_INTERVAL_FRAMES = 8;
-const PORTRAIT_FRAME_INTERVAL_MS = 1000 / 30;
 const MOBILE_PAUSE_X_RECT: Rect = { x: 18, y: 28, width: 62, height: 62 };
 
 function introDurationForMode(mode: GameMode) {
@@ -2236,7 +2237,7 @@ export function GameCanvas({ mode, roundNumber, initialScore, tweets, isLiveTwee
     if (!assetReady || !fontReady) return undefined;
 
     const tick = (timeMs: number) => {
-      if (isPortraitLayout(layout) && timeMs - lastRenderedFrameAtRef.current < PORTRAIT_FRAME_INTERVAL_MS) {
+      if (isPortraitLayout(layout) && timeMs - lastRenderedFrameAtRef.current < PORTRAIT_FRAME_INTERVAL_MS - PORTRAIT_FRAME_TOLERANCE_MS) {
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
