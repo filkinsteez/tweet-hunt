@@ -87,14 +87,20 @@ class GameAudio {
     this.withBuffer(key, (buffer) => this.startSound(key, buffer, volume));
   }
 
+  /**
+   * Like play(), but skips instead of stealing the oldest instance when the
+   * per-sound concurrency cap is reached. Matches the old HTMLAudioElement
+   * pool semantics: overlapping instances are allowed (the intro dog bark
+   * relies on this to layer barks faster than one bark can finish).
+   */
   playIfIdle(key: GameSoundKey, volume = 0.75) {
     if (typeof window === "undefined") return;
     this.initialize();
     if (!this.unlocked) return;
-    if ((this.activeSounds.get(key)?.size ?? 0) > 0) return;
+    if ((this.activeSounds.get(key)?.size ?? 0) >= MAX_CONCURRENT_PER_KEY) return;
 
     this.withBuffer(key, (buffer) => {
-      if ((this.activeSounds.get(key)?.size ?? 0) > 0) return;
+      if ((this.activeSounds.get(key)?.size ?? 0) >= MAX_CONCURRENT_PER_KEY) return;
       this.startSound(key, buffer, volume);
     });
   }
