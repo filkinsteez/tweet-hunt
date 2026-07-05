@@ -46,11 +46,21 @@ type ActiveSound = {
   gain: GainNode;
 };
 
+type AudioSessionNavigator = Navigator & { audioSession?: { type: string } };
+
 /**
  * Game SFX on the Web Audio API. HTMLAudioElement playback goes through the
  * system media pipeline and blocks the main thread on iOS Safari (rapid-fire
  * sounds like wing flaps drop gameplay to single-digit fps); decoded
  * AudioBuffers played through AudioBufferSourceNodes are effectively free.
+ *
+ * iOS specifics this class must handle:
+ * - Web Audio output is muted by the ringer/silent switch unless the page's
+ *   audio session is promoted to "playback" (HTMLAudioElement got that for
+ *   free, so the old sound system was audible in silent mode).
+ * - The AudioContext starts suspended until resumed inside a user gesture,
+ *   and iOS can re-suspend/interrupt it on backgrounding or calls, so every
+ *   gesture and page-visibility change is treated as a chance to resume.
  */
 class GameAudio {
   private context: AudioContext | null = null;
@@ -59,6 +69,7 @@ class GameAudio {
   private readonly activeSounds = new Map<GameSoundKey, Set<ActiveSound>>();
   private readonly loops = new Map<GameSoundKey, ActiveSound>();
   private readonly pendingLoopVolumes = new Map<GameSoundKey, number>();
+  private readonly warned = new Set<string>();
   private unlocked = false;
   private initialized = false;
   private generation = 0;
@@ -137,21 +148,66 @@ class GameAudio {
     if (typeof window === "undefined") return;
     this.initialize();
     this.unlocked = true;
+    this.configureAudioSession();
     this.resumeContext();
+  }
+
+  /** Snapshot of the audio pipeline for debugging silent output in the field. */
+  debugState() {
+    return {
+      initialized: this.initialized,
+      unlocked: this.unlocked,
+      contextState: this.context?.state ?? "no-context",
+      sampleRate: this.context?.sampleRate ?? 0,
+      buffersLoaded: this.buffers.size,
+      totalSounds: Object.keys(SOUND_URLS).length,
+      pendingRequests: this.bufferRequests.size,
+      activeLoops: [...this.loops.keys()],
+      audioSessionType:
+        typeof navigator === "undefined" ? "no-navigator" : ((navigator as AudioSessionNavigator).audioSession?.type ?? "unsupported"),
+      warnings: [...this.warned]
+    };
   }
 
   private initialize() {
     if (this.initialized || typeof window === "undefined") return;
     this.initialized = true;
 
+    this.configureAudioSession();
+
     for (const key of Object.keys(SOUND_URLS) as GameSoundKey[]) {
       void this.loadBuffer(key);
     }
 
+    // Deliberately not `once: true`: iOS can re-suspend the context after the
+    // first unlock (silent switch, backgrounding, calls), and a single failed
+    // resume must not permanently kill audio. Resuming a running context is a
+    // no-op, so re-running unlock on every gesture is free.
     const unlock = () => this.unlock();
-    window.addEventListener("pointerdown", unlock, { once: true, capture: true });
-    window.addEventListener("keydown", unlock, { once: true, capture: true });
-    window.addEventListener("touchstart", unlock, { once: true, capture: true });
+    window.addEventListener("pointerdown", unlock, { capture: true });
+    window.addEventListener("keydown", unlock, { capture: true });
+    window.addEventListener("touchstart", unlock, { capture: true });
+
+    const resumeIfVisible = () => {
+      if (document.visibilityState === "visible" && this.unlocked) this.resumeContext();
+    };
+    document.addEventListener("visibilitychange", resumeIfVisible);
+    window.addEventListener("pageshow", resumeIfVisible);
+    window.addEventListener("focus", resumeIfVisible);
+  }
+
+  /**
+   * Route this page's audio through the media "playback" session so Web Audio
+   * output ignores the iOS ringer/silent switch, matching the behavior of the
+   * HTMLAudioElement-based sound system this replaced.
+   */
+  private configureAudioSession() {
+    try {
+      const session = (navigator as AudioSessionNavigator).audioSession;
+      if (session && session.type !== "playback") session.type = "playback";
+    } catch (error) {
+      this.warnOnce("audio-session", error);
+    }
   }
 
   private ensureContext(): AudioContext | null {
@@ -160,11 +216,15 @@ class GameAudio {
 
     const Constructor =
       window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Constructor) return null;
+    if (!Constructor) {
+      this.warnOnce("no-audiocontext");
+      return null;
+    }
 
     try {
       this.context = new Constructor();
-    } catch {
+    } catch (error) {
+      this.warnOnce("context-create", error);
       return null;
     }
     return this.context;
@@ -172,9 +232,10 @@ class GameAudio {
 
   private resumeContext() {
     const context = this.ensureContext();
-    if (context && context.state !== "running") {
-      void context.resume().catch(() => undefined);
-    }
+    if (!context) return;
+    // Covers "suspended" plus iOS's nonstandard "interrupted" state.
+    if (context.state === "running") return;
+    void context.resume().catch((error) => this.warnOnce("context-resume", error));
   }
 
   private withBuffer(key: GameSoundKey, onReady: (buffer: AudioBuffer) => void) {
@@ -204,13 +265,17 @@ class GameAudio {
         if (!context) return null;
 
         const response = await fetch(SOUND_URLS[key]);
-        if (!response.ok) return null;
+        if (!response.ok) {
+          this.warnOnce(`fetch-${key}:${response.status}`);
+          return null;
+        }
 
         const data = await response.arrayBuffer();
         const buffer = await context.decodeAudioData(data);
         this.buffers.set(key, buffer);
         return buffer;
-      } catch {
+      } catch (error) {
+        this.warnOnce(`load-${key}`, error);
         return null;
       } finally {
         this.bufferRequests.delete(key);
@@ -251,7 +316,8 @@ class GameAudio {
 
     try {
       active.source.start();
-    } catch {
+    } catch (error) {
+      this.warnOnce("source-start", error);
       sounds.delete(active);
       disconnectSound(active);
     }
@@ -268,10 +334,17 @@ class GameAudio {
     this.loops.set(key, active);
     try {
       active.source.start();
-    } catch {
+    } catch (error) {
+      this.warnOnce("loop-start", error);
       this.loops.delete(key);
       disconnectSound(active);
     }
+  }
+
+  private warnOnce(scope: string, error?: unknown) {
+    if (this.warned.has(scope)) return;
+    this.warned.add(scope);
+    console.warn(`[game-audio] ${scope}`, error ?? "");
   }
 }
 
@@ -312,3 +385,9 @@ function disconnectSound(active: ActiveSound) {
 }
 
 export const gameAudio = new GameAudio();
+
+// Field-debug handle: run `__gameAudio.debugState()` in the browser console to
+// see exactly which stage of the audio pipeline is failing.
+if (typeof window !== "undefined") {
+  (window as unknown as { __gameAudio?: GameAudio }).__gameAudio = gameAudio;
+}
