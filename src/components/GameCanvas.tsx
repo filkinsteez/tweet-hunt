@@ -216,6 +216,9 @@ const PIXEL_FONT = "'Press Start 2P', monospace";
 const COLORS: BirdColor[] = ["blue", "green", "red"];
 const UI_SCALE = 4;
 const PORTRAIT_UI_SCALE = 3.25;
+const CLAY_MAX_TIMING_BONUS = 700;
+const CLAY_TIMING_BONUS_STEP = 100;
+const CLAY_SHOT_BONUS = 300;
 
 async function deleteTweetOnHit(tweetId: string, mode: GameMode) {
   if (mode === "C") return false;
@@ -1101,6 +1104,18 @@ function createWaitingTarget(state: RuntimeState, targetIndex: number, tweet: Tw
     slotIndex: targetIndex % targetsPerVolley(mode),
     shootable: false
   };
+}
+
+function clayHitScoreForTarget(state: RuntimeState, target: TargetEntity, hitAtMs: number) {
+  const baseScore = clayScoreForRound(state.roundNumber);
+  const elapsedMs = Math.max(0, hitAtMs - target.createdAtMs);
+  const imageIndex =
+    target.clayImageIndex ??
+    Math.min(Math.floor(elapsedMs / (isPortraitLayout(state.layout) ? 360 : 260)), isPortraitLayout(state.layout) ? 9 : 11);
+  const distanceClass = target.distanceClass ?? Math.min(Math.floor(imageIndex / 2), 7);
+  const timingBonus = Math.max(0, CLAY_MAX_TIMING_BONUS - distanceClass * CLAY_TIMING_BONUS_STEP);
+  const shotBonus = state.shotsRemaining * CLAY_SHOT_BONUS;
+  return baseScore + timingBonus + shotBonus;
 }
 
 function playTargetSound(
@@ -2387,7 +2402,10 @@ export function GameCanvas({ mode, roundNumber, initialScore, tweets, isLiveTwee
     hit.vx = hit.direction * 55;
     hit.vy = 260;
     if (!hit.isGolden) state.lastVolleyHitCount += 1;
-    if (hit.kind === "clay") gameAudio.play("clayPigeonHit", 0.78);
+    if (hit.kind === "clay") {
+      hit.points = clayHitScoreForTarget(state, hit, now);
+      gameAudio.play("clayPigeonHit", 0.78);
+    }
 
     const record: HitRecord = {
       targetId: hit.id,
