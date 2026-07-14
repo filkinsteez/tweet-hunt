@@ -569,7 +569,7 @@ export function TweetHuntApp() {
     try {
       const tweets = mode === "C" ? [] : await loadLiveTweetCandidates();
       if (mode !== "C" && tweets.length === 0) {
-        startArcadeFallback(mode, "No live tweets were available. Switching to arcade scoring with no deletion.");
+        startFakeTweetRound();
         return;
       }
       setRoundTweets(tweets);
@@ -581,11 +581,11 @@ export function TweetHuntApp() {
       gameAudio.stopAll();
       setStage("play");
     } catch (error) {
-      setTweetLoadError(error instanceof Error ? error.message : "Could not load live tweets from X.");
       if (mode !== "C") {
-        setPendingMode(mode);
-        setStage("title");
+        startFakeTweetRound();
+        return;
       }
+      setTweetLoadError(error instanceof Error ? error.message : "Could not load live tweets from X.");
     } finally {
       setIsLoadingTweets(false);
     }
